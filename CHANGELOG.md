@@ -2,6 +2,96 @@
 
 All notable changes to GBrain will be documented in this file.
 
+## [0.40.10.0] - 2026-05-24
+
+**Your brain stops accepting junk pages, and oversize content stops crashing the embedder.** A page from one of your source repos can no longer break embedding, defeat search, or pollute your knowledge graph just because it's a Cloudflare challenge dump or an absurdly large file. The new sanity gate lives at the narrow waist of ingestion, so every path that writes pages — sync, capture, `put_page` MCP, the `/ingest` webhook — picks it up uniformly.
+
+Two failure modes treated differently:
+
+- **Scraper junk** (Cloudflare challenge pages, CAPTCHAs, 403 dumps, bare error-page titles): HARD-BLOCK at ingest. Your CLI exits non-zero, your MCP call gets a proper error envelope, your sync surfaces the failure with code `PAGE_JUNK_PATTERN` so doctor groups it. The page never lands. Six hand-vetted patterns ship built-in; operators add literal substrings for site-specific cases via `~/.gbrain/junk-substrings.txt`.
+
+- **Legitimate large content** (your 2MB conversation transcripts, long essays, big articles): SOFT-BLOCK. The page writes successfully, you can still query it by title and slug, but the embedder skips it on the next sweep. The 5 places the embedder reads from now share one source-of-truth helper so the skip can't drift across them. If you edit a page past the size threshold, its old chunks get deleted in the same transaction so search stops returning matches against content that's no longer there.
+
+**New surfaces:**
+- `gbrain sources audit <id>` — walk a source repo's disk, report size distribution + would-blocks + junk-pattern hits without touching the DB. Catches junk before sync. Read-only by design.
+- `gbrain doctor` gains `oversized_pages`, `scraper_junk_pages`, `content_sanity_audit_recent` checks. Default scans the 1000 most-recent pages; `--content-audit` opts into a full scan for the cleanup wave.
+- `gbrain lint` gains `huge-page` and `scraper-junk` rules. Lint reads DB config when reachable (matches what `gbrain config set` writes) and falls back to file/env on CI.
+- `GBRAIN_NO_SANITY=1` kill-switch with loud stderr per bypassed ingest. Operators who really want junk through have to ask for it explicitly and see the warning every time.
+
+**Knobs (all four read env > file > DB > defaults):**
+- `content_sanity.bytes_warn` (default 50_000) — `GBRAIN_PAGE_WARN_BYTES`
+- `content_sanity.bytes_block` (default 500_000) — `GBRAIN_PAGE_BLOCK_BYTES`
+- `content_sanity.junk_patterns_enabled` (default true) — `GBRAIN_NO_JUNK_PATTERNS=1` flips off
+- `content_sanity.disabled` (default false) — `GBRAIN_NO_SANITY=1` flips on
+
+**ISO-week JSONL audit** at `~/.gbrain/audit/content-sanity-YYYY-Www.jsonl` records every hard-block, soft-block, and warn-trip event. Doctor reads the last 7 days, aggregates by pattern + source, surfaces "31 ingest blocks this week, 28 from straylight-brain" so operators see which scraper is the actual problem. Honors `GBRAIN_AUDIT_DIR` for shared-filesystem multi-host setups; documented caveat in the doctor message for ops that don't share the dir.
+
+**No schema migration this PR.** The soft-block flag rides in `frontmatter.embed_skip` JSONB so the embedder filter is a single SQL fragment shared by both engines. Schema column for `pages.embed_skipped_at` lands in v0.41+ with the chunk-level quarantine refactor — deferred for the right reason (Codex caught that page-level granularity loses good chunks; chunk-level is the right axis).
+
+**Review provenance.** This wave went through `/plan-ceo-review` (5 cherry-picks surfaced, 3 accepted, 2 deferred post-Codex round 1) and `/plan-eng-review` (4 architectural decisions resolved + 4 strategic Codex round 2 tensions resolved). Codex caught one load-bearing bug class during planning — `importFromContent.status` vocabulary mismatch that would have made the gate silently fail at the CLI / MCP / sync wrapper sites. Fixed by throwing a typed `ContentSanityBlockError` instead of inventing a new status value; the existing exception flow at every wrapper site fires correctly through one throw point. The plan was substantially tightened post-Codex (dropped 2 cherry-picks that needed v0.42 chunk-level rework, dropped an operator-regex feature that needed a real ReDoS story, dropped the HTML-density rule that needed careful handling of code fences). What ships is what the actual bug needed plus the audit + cleanup surfaces.
+
+**99 new unit tests** (207 assertions) across 6 files covering the assessor, literal loader, embed-skip helper, audit JSONL, lint rules, and the import-file gate. 136 surface-area regression tests on the files touched all pass in isolation. Full bun:test suite returns clean.
+
+### To take advantage of v0.40.10.0
+
+`gbrain upgrade` carries this for you. No migration, no manual steps. After upgrading:
+
+1. **Audit your existing inventory** (optional but recommended):
+   ```bash
+   gbrain doctor --content-audit --json | jq '.checks[] | select(.name == "scraper_junk_pages" or .name == "oversized_pages")'
+   ```
+   Surfaces existing junk pages and oversized pages already in your brain.
+
+2. **For any junk pages doctor flags**, the right cleanup is at the source — `git rm` the file from the source repo, push, then `gbrain sync`. The v0.41+ wave will ship `gbrain sources prune-junk <id>` to automate this; for v0.40.10.0 it's a manual two-step.
+
+3. **For oversized pages doctor flags** as warn-tier, no action needed unless you want to split. New oversize will automatically write with `frontmatter.embed_skip` and be queryable by title (just not search-rankable until split).
+
+4. **If you have a site-specific scraper-junk pattern** (LinkedIn auth wall, Reddit blocked page, etc.), drop a literal in `~/.gbrain/junk-substrings.txt`:
+   ```
+   # name=linkedin_auth_wall
+   Sign in to your account to continue
+
+   # name=reddit_blocked
+   You're being blocked from accessing
+   ```
+   Loaded on every ingest. Missing file is fine; malformed lines are impossible (no regex).
+
+5. **If any step surprises you,** please file an issue: https://github.com/garrytan/gbrain/issues with:
+   - output of `gbrain doctor --json`
+   - a sanitized example of the page that surprised you
+   - which step broke
+
+   The audit JSONL at `~/.gbrain/audit/content-sanity-YYYY-Www.jsonl` carries the assessor's full reasoning per event if you want to debug a specific decision.
+
+### Itemized changes
+
+**Added:**
+- `src/core/content-sanity.ts` — pure assessor with 6 hand-vetted junk patterns + `ContentSanityBlockError` class
+- `src/core/content-sanity-literals.ts` — operator literal-substring loader (fail-soft on ENOENT)
+- `src/core/embed-skip.ts` — 5-site shared predicate (JS + SQL fragment + marker builder)
+- `src/core/audit/content-sanity-audit.ts` — ISO-week JSONL writer/reader on the v0.40.4.0 audit-writer primitive
+- `gbrain sources audit <id>` CLI for dry-run source-repo scanning
+- `gbrain doctor --content-audit` flag for full-scan opt-in
+- `gbrain doctor` checks: `oversized_pages`, `scraper_junk_pages`, `content_sanity_audit_recent`
+- `gbrain lint` rules: `huge-page`, `scraper-junk`
+- 4 `content_sanity.*` config keys (file/env/DB plane)
+
+**Changed:**
+- `importFromContent` throws `ContentSanityBlockError` on hard-block (junk pattern match) and sets `frontmatter.embed_skip` on soft-block (oversize alone). Old chunks deleted on transition to soft-block.
+- `gbrain import` honors `errors > 0` for non-zero exit (was silently exit-0 on failed files).
+- Embed sweep skips pages with `embed_skip` flag at all 5 sites: `embed.ts --stale`, `embed.ts --all`, `embed-stale.ts` Minion helper, both engines' `listStaleChunks` + `countStaleChunks`.
+- `lint.ts` lifts DB config when `~/.gbrain/` is reachable; falls back to file/env on CI.
+- `classifyErrorCode` recognizes `PAGE_JUNK_PATTERN` for sync-failures.jsonl grouping.
+
+**Test coverage:**
+- 99 new unit tests across 6 files (207 assertions)
+- All new modules covered at the boundary level
+- Cross-site embed-skip invariant pinned by `test/embed-skip.test.ts`
+- Bytes-parity assertion (D2) pinned in `test/content-sanity.test.ts`
+
+### For contributors
+
+The plan file lives at `~/.claude/plans/system-instruction-you-are-working-temporal-brook.md` with the full decision provenance: CEO review (D1-D16) + Eng review (D1-D9) + Codex round 1 (17 findings) + Codex round 2 (13 findings). The deferred-to-v0.41+ TODOs are in `TODOS.md` under "v0.41 content-sanity follow-ups" — chunk-level quarantine, source-repo remediation CLI, threshold validation post-deploy, brain-score `no_junk_pages_score` component, plus the operator-regex + HTML-density features that need real ReDoS / code-fence-handling stories before they're worth shipping.
 ## [0.40.9.0] - 2026-05-24
 
 **`gbrain sync` now indexes your `.sql` files, and `gbrain code-def` works on SQL tables, functions, views, and indexes the same way it works on TypeScript.**
