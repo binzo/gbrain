@@ -2,6 +2,22 @@
 
 All notable changes to GBrain will be documented in this file.
 
+## [0.42.48.0] - 2026-06-16
+
+**Brain repos harden themselves for durability the moment gbrain is given a PAT and a GitHub URL.** Fresh agents kept drifting out of sync with their knowledge-wiki git repos: writes sat local-only and never pushed, long-lived sessions edited a stale tree, and scratch output landed outside the repo and vanished. Now `gbrain sources add --url <repo> --pat-file <p>` auto-hardens the managed clone, and `gbrain sources harden <id>` runs the same audit idempotently against any source. Hardening is six always-on guarantees: it pulls current state (divergence-safe rebase that skips a dirty tree and never leaves a half-rebase), installs a local auto-push safety net, ships a committed `scripts/brain-commit-push.sh` that refuses to report success without a confirmed push, writes always-on durability rules into the agent's context file (deterministic filing from the canonical taxonomy, commit-and-push-never-deferred, pull-before-each-write-batch), registers a 30-minute background pull so an idle session can't go stale, and verifies push access up front.
+
+This is gbrain's first push path and first credential storage, built secure by default. The push automation is installed locally per machine rather than committed into the repo, the GitHub token is wired per-repo (least-privilege; an existing credential helper is reused when present rather than writing a new one), and the token never enters the repo, the tracked remote URL, logs, or the run report. Hardening proves push works with a dry-run probe before declaring done, so a read-only token or a protected branch surfaces immediately instead of silently dropping writes later. `gbrain sources unharden <id>` cleanly removes everything it installed and runs automatically before `sources remove`.
+
+### Added
+- `gbrain sources harden <id|--all> [--pat-file <p>] [--branch <b>] [--no-cron] [--no-verify] [--dry-run] [--json]` — idempotent brain-repo durability hardening.
+- `gbrain sources pull <id> | --path <dir> [--branch <b>]` — divergence-safe rebase-pull; `--path` runs DB-free so the 30-minute cron never contends for the local engine lock.
+- `gbrain sources unharden <id>` — remove the durability cron, hook, and credential wiring.
+- `--pat-file` / `--no-harden` on `gbrain sources add`; managed clones added with a PAT auto-harden.
+- `git-remote.ts`: `divergenceSafePull`, `detectDefaultBranch`, `pushProbe`, and an env-gated `GBRAIN_GIT_ALLOW_FILE_TRANSPORT` escape hatch for self-hosted filesystem remotes.
+
+### To take advantage of v0.42.48.0
+`gbrain upgrade`. Add a brain repo with `gbrain sources add <id> --url <https-repo> --pat-file <path-to-token>` and it hardens automatically; or run `gbrain sources harden <id> --pat-file <path>` on an existing source. Use a fine-grained PAT scoped to just that repo. Existing brains are untouched until you opt in.
+
 ## [0.42.47.0] - 2026-06-16
 
 **A brain now travels with its own operating manual, and gbrain finally tells you how to run it better (gbrain#2180).** Two long-standing gaps closed. First: a brain repo can carry its own skillpack — skills authored for and versioned with that specific brain — and any harness that connects is offered it. Connect a fresh Claude Code or a thin client to a mature brain and it learns, on the spot, which meeting-ingestion or diligence protocol the brain expects, instead of starting blind. Second: gbrain stops being purely passive. `gbrain advisor` reads the brain's own state and hands back a ranked, read-only list of high-leverage actions — pending migrations, version drift, stalled backfills, low embedding coverage, setup smells — each with the exact command to fix it. It never acts on its own; it shows you and asks.
