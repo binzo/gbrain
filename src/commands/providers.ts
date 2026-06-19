@@ -8,7 +8,8 @@
 import { listRecipes, getRecipe } from '../core/ai/recipes/index.ts';
 import { configureGateway, embedOne, isAvailable as gwIsAvailable, chat as gwChat } from '../core/ai/gateway.ts';
 import { probeOllama, probeLMStudio } from '../core/ai/probes.ts';
-import { loadConfig } from '../core/config.ts';
+import { loadConfig, type GBrainConfig } from '../core/config.ts';
+import { buildGatewayConfig } from '../core/ai/build-gateway-config.ts';
 import { AIConfigError, AITransientError } from '../core/ai/errors.ts';
 import type { Recipe } from '../core/ai/types.ts';
 
@@ -33,18 +34,14 @@ interface ProviderOption {
 
 function configureFromEnv(): void {
   const config = loadConfig();
-  configureGateway({
-    embedding_model: config?.embedding_model,
-    embedding_dimensions: config?.embedding_dimensions,
-    expansion_model: config?.expansion_model,
-    chat_model: config?.chat_model,
-    chat_fallback_chain: config?.chat_fallback_chain,
-    base_urls: config?.provider_base_urls,
-    env: { ...process.env },
-  });
+  configureGateway(buildGatewayConfig((config ?? {}) as GBrainConfig));
 }
 
-export function envReady(recipe: Recipe, env: NodeJS.ProcessEnv = process.env): boolean {
+function effectiveProviderEnv(): Record<string, string | undefined> {
+  return buildGatewayConfig((loadConfig() ?? {}) as GBrainConfig).env;
+}
+
+export function envReady(recipe: Recipe, env: Record<string, string | undefined> = process.env): boolean {
   const required = recipe.auth_env?.required ?? [];
   if (required.length === 0) return true; // e.g. local Ollama
   return required.every(k => !!env[k]);
@@ -136,7 +133,7 @@ EXAMPLES
 }
 
 function runList(_args: string[]): void {
-  console.log(formatRecipeTable(listRecipes()));
+  console.log(formatRecipeTable(listRecipes(), effectiveProviderEnv()));
 }
 
 async function runTest(args: string[]): Promise<void> {
@@ -182,16 +179,16 @@ async function runTest(args: string[]): Promise<void> {
 
     if (tpArg === 'embedding') {
       const dims = recipe?.touchpoints.embedding?.default_dims ?? 1536;
-      configureGateway({
+      configureGateway(buildGatewayConfig({
+        ...((loadConfig() ?? {}) as GBrainConfig),
         embedding_model: modelArg,
         embedding_dimensions: dims,
-        env: { ...process.env },
-      });
+      } as GBrainConfig));
     } else {
-      configureGateway({
+      configureGateway(buildGatewayConfig({
+        ...((loadConfig() ?? {}) as GBrainConfig),
         chat_model: modelArg,
-        env: { ...process.env },
-      });
+      } as GBrainConfig));
     }
     void modelId; // intentionally unused but preserved for readability
   }
@@ -250,10 +247,11 @@ function runEnv(args: string[]): void {
   console.log('');
   const required = recipe.auth_env?.required ?? [];
   const optional = recipe.auth_env?.optional ?? [];
+  const env = effectiveProviderEnv();
   if (required.length > 0) {
     console.log('Required:');
     for (const k of required) {
-      const set = !!process.env[k];
+      const set = !!env[k];
       console.log(`  ${k.padEnd(32)} ${set ? '✓ set' : '✗ not set'}`);
     }
   } else {
@@ -262,7 +260,7 @@ function runEnv(args: string[]): void {
   if (optional.length > 0) {
     console.log('\nOptional:');
     for (const k of optional) {
-      const set = !!process.env[k];
+      const set = !!env[k];
       console.log(`  ${k.padEnd(32)} ${set ? '✓ set' : '✗ not set'}`);
     }
   }
@@ -278,14 +276,15 @@ async function runExplain(args: string[]): Promise<void> {
   const asJson = args.includes('--json') || args.includes('-j');
 
   const recipes = listRecipes();
+  const env = effectiveProviderEnv();
   const env_detected = {
-    OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
-    GOOGLE_GENERATIVE_AI_API_KEY: !!process.env.GOOGLE_GENERATIVE_AI_API_KEY,
-    ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
-    VOYAGE_API_KEY: !!process.env.VOYAGE_API_KEY,
-    DEEPSEEK_API_KEY: !!process.env.DEEPSEEK_API_KEY,
-    GROQ_API_KEY: !!process.env.GROQ_API_KEY,
-    TOGETHER_API_KEY: !!process.env.TOGETHER_API_KEY,
+    OPENAI_API_KEY: !!env.OPENAI_API_KEY,
+    GOOGLE_GENERATIVE_AI_API_KEY: !!env.GOOGLE_GENERATIVE_AI_API_KEY,
+    ANTHROPIC_API_KEY: !!env.ANTHROPIC_API_KEY,
+    VOYAGE_API_KEY: !!env.VOYAGE_API_KEY,
+    DEEPSEEK_API_KEY: !!env.DEEPSEEK_API_KEY,
+    GROQ_API_KEY: !!env.GROQ_API_KEY,
+    TOGETHER_API_KEY: !!env.TOGETHER_API_KEY,
   };
 
   // Parallel probes for local providers (1s timeout each)
@@ -302,7 +301,7 @@ async function runExplain(args: string[]): Promise<void> {
         dims: m.default_dims,
         cost_per_1m_tokens_usd: m.cost_per_1m_tokens_usd,
         price_last_verified: m.price_last_verified,
-        env_ready: envReady(r) || (r.id === 'ollama' && ollama.models_endpoint_valid === true),
+        env_ready: envReady(r, env) || (r.id === 'ollama' && ollama.models_endpoint_valid === true),
         tier: r.tier,
         pros: prosFor(r, 'embedding'),
         cons: consFor(r),
@@ -316,7 +315,7 @@ async function runExplain(args: string[]): Promise<void> {
         model: m.models[0],
         cost_per_1m_tokens_usd: m.cost_per_1m_tokens_usd,
         price_last_verified: m.price_last_verified,
-        env_ready: envReady(r),
+        env_ready: envReady(r, env),
         tier: r.tier,
         pros: prosFor(r, 'expansion'),
         cons: consFor(r),
@@ -331,7 +330,7 @@ async function runExplain(args: string[]): Promise<void> {
         cost_per_1m_input_usd: m.cost_per_1m_input_usd,
         cost_per_1m_output_usd: m.cost_per_1m_output_usd,
         price_last_verified: m.price_last_verified,
-        env_ready: envReady(r),
+        env_ready: envReady(r, env),
         tier: r.tier,
         pros: prosFor(r, 'chat'),
         cons: consFor(r),

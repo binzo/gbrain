@@ -16,6 +16,7 @@
 import type { BrainEngine } from './engine.ts';
 import type { TakeBatchInput, TakeKind } from './engine.ts';
 import { chat, isAvailable } from './ai/gateway.ts';
+import { stripReasoningPrelude } from './ai/reasoning-output.ts';
 
 export const ALLOWED_PAGE_TYPES = [
   'concept', 'atom', 'lore', 'briefing', 'writing', 'originals',
@@ -79,7 +80,9 @@ interface PageRow {
 export function parseClaimsJson(raw: string): Array<{ claim: string; kind: TakeKind; weight: number }> {
   try {
     // Strip code fences if model wrapped output in ```json.
-    let text = raw.trim();
+    const stripped = stripReasoningPrelude(raw);
+    if (stripped === null || stripped.length === 0) return [];
+    let text = stripped;
     const fenceMatch = text.match(/^```(?:json)?\n?([\s\S]*?)\n?```$/);
     if (fenceMatch) text = fenceMatch[1].trim();
     const parsed = JSON.parse(text);

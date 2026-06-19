@@ -6,9 +6,12 @@
  */
 
 import { describe, test, expect } from 'bun:test';
-import { formatRecipeTable, envReady } from '../src/commands/providers.ts';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { formatRecipeTable, envReady, runProviders } from '../src/commands/providers.ts';
 import { listRecipes, getRecipe } from '../src/core/ai/recipes/index.ts';
 import type { Recipe } from '../src/core/ai/types.ts';
+import { emptyHome, withEnv } from './helpers/with-env.ts';
 
 describe('envReady', () => {
   test('true when all required env vars set', () => {
@@ -92,5 +95,56 @@ describe('formatRecipeTable', () => {
     expect(lines[2]).toContain('✓ ready');
     expect(lines[3]).toContain('zeroentropyai');
     expect(lines[3]).toContain('✗ missing ZEROENTROPY_API_KEY');
+  });
+
+  test('providers list treats provider_api_keys config as ready', async () => {
+    const home = emptyHome();
+    const dir = join(home, '.gbrain');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'config.json'), JSON.stringify({
+      engine: 'postgres',
+      provider_api_keys: { dashscope: 'sk-dashscope-config' },
+    }));
+
+    const lines: string[] = [];
+    const originalLog = console.log;
+    console.log = (msg?: unknown) => { lines.push(String(msg)); };
+    try {
+      await withEnv({ GBRAIN_HOME: home, DASHSCOPE_API_KEY: undefined }, async () => {
+        await runProviders('list', []);
+      });
+    } finally {
+      console.log = originalLog;
+    }
+
+    const out = lines.join('\n');
+    const dashscopeLine = out.split('\n').find(line => line.startsWith('dashscope'));
+    expect(dashscopeLine).toBeDefined();
+    expect(dashscopeLine).toContain('✓ ready');
+  });
+
+  test('providers env treats provider_api_keys config as set', async () => {
+    const home = emptyHome();
+    const dir = join(home, '.gbrain');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'config.json'), JSON.stringify({
+      engine: 'postgres',
+      provider_api_keys: { minimax: 'sk-minimax-config' },
+    }));
+
+    const lines: string[] = [];
+    const originalLog = console.log;
+    console.log = (msg?: unknown) => { lines.push(String(msg)); };
+    try {
+      await withEnv({ GBRAIN_HOME: home, MINIMAX_API_KEY: undefined }, async () => {
+        await runProviders('env', ['minimax']);
+      });
+    } finally {
+      console.log = originalLog;
+    }
+
+    const out = lines.join('\n');
+    expect(out).toContain('MINIMAX_API_KEY');
+    expect(out).toContain('✓ set');
   });
 });

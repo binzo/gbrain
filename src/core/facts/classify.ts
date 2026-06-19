@@ -17,6 +17,7 @@
  */
 
 import { chat, isAvailable } from '../ai/gateway.ts';
+import { stripReasoningPrelude } from '../ai/reasoning-output.ts';
 import type { ChatResult } from '../ai/gateway.ts';
 import type { FactRow, FactKind } from '../engine.ts';
 
@@ -185,7 +186,9 @@ function parseClassifierJson(
   | { decision: 'independent' }
   | null {
   // Strip code fences if the model emitted them despite instructions.
-  const cleaned = raw.trim().replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
+  const stripped = stripReasoningPrelude(raw);
+  if (stripped === null || stripped.length === 0) return null;
+  const cleaned = stripped.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
   // Try strict JSON first.
   let json: ClassifierJson | null = tryJson(cleaned);
   if (!json) {

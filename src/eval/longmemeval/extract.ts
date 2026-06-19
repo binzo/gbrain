@@ -32,6 +32,7 @@
 
 import { createHash } from 'crypto';
 import type { ThinkLLMClient } from '../../core/think/index.ts';
+import { stripReasoningPrelude } from '../../core/ai/reasoning-output.ts';
 import {
   resolveEntitySlugWithSource,
   type ResolutionSource,
@@ -49,9 +50,11 @@ import type { BrainEngine, NewFact } from '../../core/engine.ts';
  */
 function parseExtractedJsonArray(raw: string): unknown[] {
   if (typeof raw !== 'string' || !raw.trim()) return [];
+  const stripped = stripReasoningPrelude(raw);
+  if (stripped === null || stripped.length === 0) return [];
   // Strip ```json ... ``` fences if present.
-  const fenceMatch = raw.match(/```(?:json)?\s*\n?([\s\S]*?)```/i);
-  const cleaned = (fenceMatch ? fenceMatch[1] : raw).trim();
+  const fenceMatch = stripped.match(/```(?:json)?\s*\n?([\s\S]*?)```/i);
+  const cleaned = (fenceMatch ? fenceMatch[1] : stripped).trim();
   // Direct parse.
   try {
     const direct = JSON.parse(cleaned);

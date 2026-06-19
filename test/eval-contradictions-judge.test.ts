@@ -18,6 +18,7 @@ import {
   normalizeVerdict,
   truncateUtf8,
   DEFAULT_MAX_PAIR_CHARS,
+  parseJudgeJSON,
 } from '../src/core/eval-contradictions/judge.ts';
 import type { ChatOpts, ChatResult } from '../src/core/ai/gateway.ts';
 
@@ -286,6 +287,17 @@ describe('judgeContradiction', () => {
       chatFn: stubChat(mkResult(fenced)),
     });
     expect(out.verdict.verdict).toBe('no_contradiction');
+  });
+
+  test('strips reasoning-model <think> prelude before verdict JSON', async () => {
+    const raw = '<think>{"verdict":"no_contradiction"}</think>\n' + JSON.stringify({
+      verdict: 'contradiction',
+      severity: 'medium',
+      confidence: 0.9,
+    });
+    const parsed = parseJudgeJSON(raw) as Record<string, unknown>;
+    expect(parsed.verdict).toBe('contradiction');
+    expect(parsed.confidence).toBe(0.9);
   });
 
   test('throws on parse failure (counted in judge_errors)', async () => {

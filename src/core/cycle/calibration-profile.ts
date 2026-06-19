@@ -27,6 +27,7 @@
 
 import { BaseCyclePhase, type ScopedReadOpts, type BasePhaseOpts } from './base-phase.ts';
 import { chat as gatewayChat } from '../ai/gateway.ts';
+import { stripReasoningPrelude } from '../ai/reasoning-output.ts';
 import { gateVoice, type VoiceGateGenerator, type VoiceGateJudge } from '../calibration/voice-gate.ts';
 import { patternStatementTemplate, type PatternStatementSlots } from '../calibration/templates.ts';
 // v0.41 T10 — domain widening. The aggregator module resolves the active
@@ -174,7 +175,9 @@ export function parsePatternStatementsOutput(raw: string): string[] {
 /** Parse a JSON-array bias-tags block, tolerant of fence wrapping. */
 export function parseBiasTagsOutput(raw: string): string[] {
   if (!raw || raw.trim().length === 0) return [];
-  let text = raw.trim();
+  const stripped = stripReasoningPrelude(raw);
+  if (stripped === null || stripped.length === 0) return [];
+  let text = stripped;
   const fenced = text.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/);
   if (fenced) text = (fenced[1] ?? '').trim();
   const firstArr = text.indexOf('[');

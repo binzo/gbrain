@@ -14,6 +14,7 @@
  */
 
 import { chat as gatewayChat } from '../ai/gateway.ts';
+import { stripReasoningPrelude } from '../ai/reasoning-output.ts';
 import type { EditOp, ScoredRollout, Judge, RuleCheck } from './types.ts';
 import type { RejectedEntry } from './rejected-buffer.ts';
 
@@ -289,10 +290,12 @@ export function parseEditsResponse(raw: string): EditOp[] {
 }
 
 function tryExtractEdits(raw: string): EditOp[] {
+  const stripped = stripReasoningPrelude(raw);
+  if (stripped === null || stripped.length === 0) return [];
   try {
     // Strip fences first.
-    const fenced = raw.match(/```(?:json)?\s*\n?([\s\S]*?)```/i);
-    const cleaned = (fenced ? fenced[1]! : raw).trim();
+    const fenced = stripped.match(/```(?:json)?\s*\n?([\s\S]*?)```/i);
+    const cleaned = (fenced ? fenced[1]! : stripped).trim();
     // Try direct parse.
     const direct = JSON.parse(cleaned);
     if (direct && typeof direct === 'object' && Array.isArray((direct as { edits?: unknown }).edits)) {
@@ -300,7 +303,7 @@ function tryExtractEdits(raw: string): EditOp[] {
     }
   } catch { /* try next strategy */ }
   // Fallback: extract first {...} substring.
-  const match = raw.match(/\{[\s\S]*\}/);
+  const match = stripped.match(/\{[\s\S]*\}/);
   if (!match) return [];
   try {
     const parsed = JSON.parse(match[0]);

@@ -20,8 +20,9 @@
  * rubric) shas; rubric_version field segregates trend rows by rubric epoch.
  */
 import type { BrainEngine } from '../core/engine.ts';
+import { buildGatewayConfig } from '../core/ai/build-gateway-config.ts';
 import { configureGateway } from '../core/ai/gateway.ts';
-import { loadConfig } from '../core/config.ts';
+import { loadConfig, loadConfigWithEngine } from '../core/config.ts';
 import { runEval, DEFAULT_MODEL_PANEL } from '../core/takes-quality-eval/runner.ts';
 import { resolveCycleDefault, cycleDefaultSuffix } from '../core/eval/cycle-default.ts';
 import { writeReceipt } from '../core/takes-quality-eval/receipt-write.ts';
@@ -125,10 +126,12 @@ export async function runReplayNoBrain(argv: string[]): Promise<number> {
  * with an open engine.
  */
 export async function runEvalTakesQuality(engine: BrainEngine, args: string[]): Promise<void> {
-  // Self-configure the AI gateway (mirrors eval-cross-modal pattern). The
-  // gateway needs config.ai_gateway + env vars; configureGateway reads both.
+  // Self-configure the AI gateway (mirrors cli.ts:connectEngine). This path
+  // needs DB-backed provider_api_keys.* to reach chat providers such as MiniMax.
   const cfg = loadConfig();
-  configureGateway({ ...cfg, ...(process.env as Record<string, string>) } as any);
+  const fallbackCfg = cfg ?? ({ engine: 'postgres' } as const);
+  const effectiveCfg = (await loadConfigWithEngine(engine, cfg).catch(() => fallbackCfg)) ?? fallbackCfg;
+  configureGateway(buildGatewayConfig(effectiveCfg));
 
   const { subcmd, argv, json } = parseSubcmd(args);
 

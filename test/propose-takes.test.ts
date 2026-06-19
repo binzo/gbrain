@@ -158,6 +158,18 @@ describe('parseExtractorOutput', () => {
     const out = parseExtractorOutput(raw);
     expect(out[0]!.domain).toBe('macro');
   });
+
+  test('strips reasoning-model <think> prelude before parsing claims', () => {
+    const raw = '<think>Need a JSON array. Maybe [{"bad":true}]</think>\n' +
+      '[{"claim_text":"MiniMax parses","kind":"take","holder":"brain","weight":0.5}]';
+    const out = parseExtractorOutput(raw);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.claim_text).toBe('MiniMax parses');
+  });
+
+  test('returns [] for unclosed <think> prelude', () => {
+    expect(parseExtractorOutput('<think>truncated before final answer [{"claim_text":"x"}]')).toEqual([]);
+  });
 });
 
 // ─── contentHash ────────────────────────────────────────────────────

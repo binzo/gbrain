@@ -16,6 +16,7 @@
  */
 
 import { chat as gatewayChat } from '../ai/gateway.ts';
+import { stripReasoningPrelude } from '../ai/reasoning-output.ts';
 import { ndcgAtK } from '../search/eval.ts';
 import type { Judge, RuleCheck, ScoredRollout, Trajectory } from './types.ts';
 
@@ -125,9 +126,11 @@ No prose before or after. No code fences. No extra fields. The score MUST be a n
  */
 export function parseJudgeJson(raw: string): { score: number | string; rationale?: string } | null {
   if (typeof raw !== 'string' || !raw.trim()) return null;
+  const stripped = stripReasoningPrelude(raw);
+  if (stripped === null || stripped.length === 0) return null;
   // Strip markdown fences if present.
-  const fenced = raw.match(/```(?:json)?\s*\n?([\s\S]*?)```/i);
-  const cleaned = (fenced ? fenced[1]! : raw).trim();
+  const fenced = stripped.match(/```(?:json)?\s*\n?([\s\S]*?)```/i);
+  const cleaned = (fenced ? fenced[1]! : stripped).trim();
   // Try direct parse first.
   const direct = tryJsonParse(cleaned);
   if (direct && typeof direct === 'object' && 'score' in (direct as object)) {

@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'bun:test';
 import { readFileSync } from 'fs';
-import { isSensitiveConfigKey, redactConfigValue } from '../src/commands/config.ts';
+import { isSensitiveConfigKey, redactConfigValue, runConfig } from '../src/commands/config.ts';
 
 // redactUrl is not exported, so we test it by reading the source and
 // reimplementing the regex to verify the pattern, then test via CLI
@@ -66,6 +66,7 @@ describe('config source correctness', () => {
 describe('isSensitiveConfigKey (v0.36.x #892 regression)', () => {
   test('matches common sensitive key shapes', () => {
     expect(isSensitiveConfigKey('openai_api_key')).toBe(true);
+    expect(isSensitiveConfigKey('provider_api_keys.dashscope')).toBe(true);
     expect(isSensitiveConfigKey('anthropic_api_key')).toBe(true);
     expect(isSensitiveConfigKey('voyage_api_key')).toBe(true);
     expect(isSensitiveConfigKey('admin_token')).toBe(true);
@@ -93,6 +94,7 @@ describe('isSensitiveConfigKey (v0.36.x #892 regression)', () => {
 describe('redactConfigValue (v0.36.x #892 — set output regression)', () => {
   test('redacts sensitive keys to ***', () => {
     expect(redactConfigValue('openai_api_key', 'sk-test-123')).toBe('***');
+    expect(redactConfigValue('provider_api_keys.dashscope', 'sk-test-123')).toBe('***');
     expect(redactConfigValue('admin_token', 'eyJhbGciOiJIUzI1NiJ9')).toBe('***');
   });
 
@@ -105,6 +107,35 @@ describe('redactConfigValue (v0.36.x #892 — set output regression)', () => {
     expect(redactConfigValue('search.mode', 'balanced')).toBe('balanced');
     expect(redactConfigValue('embedding_model', 'voyage:voyage-3-large'))
       .toBe('voyage:voyage-3-large');
+  });
+});
+
+describe('runConfig provider_api_keys file-plane write', () => {
+  test('config set provider_api_keys.<provider> writes ~/.gbrain/config.json', async () => {
+    const { mkdtempSync, readFileSync, rmSync } = await import('fs');
+    const { join } = await import('path');
+    const { tmpdir } = await import('os');
+    const { withEnv } = await import('./helpers/with-env.ts');
+    const tmpHome = mkdtempSync(join(tmpdir(), 'gbrain-provider-key-'));
+    const engine = {
+      async setConfig() {},
+      async getConfig() { return null; },
+      async unsetConfig() { return 0; },
+      async listConfigKeys() { return []; },
+    };
+    const originalLog = console.log;
+    console.log = () => {};
+    try {
+      await withEnv({ GBRAIN_HOME: tmpHome }, async () => {
+        await runConfig(engine as never, ['set', 'provider_api_keys.dashscope', 'sk-dashscope-test']);
+        const raw = readFileSync(join(tmpHome, '.gbrain', 'config.json'), 'utf-8');
+        const parsed = JSON.parse(raw);
+        expect(parsed.provider_api_keys.dashscope).toBe('sk-dashscope-test');
+      });
+    } finally {
+      console.log = originalLog;
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
   });
 });
 

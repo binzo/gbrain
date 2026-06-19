@@ -49,6 +49,7 @@ import type { PhaseResult } from '../cycle.ts';
 import type { GBrainConfig } from '../config.ts';
 import type { ProgressReporter } from '../progress.ts';
 import { chat as gatewayChat } from '../ai/gateway.ts';
+import { stripReasoningPrelude } from '../ai/reasoning-output.ts';
 import { writeReceipt } from '../extract/receipt-writer.ts';
 import { upsertExtractRollup } from '../extract/rollup-writer.ts';
 
@@ -634,7 +635,9 @@ export async function runPhaseExtractAtoms(
  */
 export function parseAtomsResponse(raw: string): ExtractedAtom[] {
   // Strip markdown code fences if the LLM wrapped JSON in them.
-  let cleaned = raw.trim();
+  const stripped = stripReasoningPrelude(raw);
+  if (stripped === null || stripped.length === 0) return [];
+  let cleaned = stripped;
   const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenceMatch) cleaned = fenceMatch[1].trim();
 

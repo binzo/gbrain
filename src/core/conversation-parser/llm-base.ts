@@ -31,6 +31,7 @@
 
 import { createHash } from 'node:crypto';
 import { chat as gatewayChat, type ChatOpts, type ChatResult } from '../ai/gateway.ts';
+import { stripReasoningPrelude } from '../ai/reasoning-output.ts';
 import { resolveRecipe } from '../ai/model-resolver.ts';
 import { AIConfigError } from '../ai/errors.ts';
 import { normalizeModelId } from '../model-id.ts';
@@ -306,8 +307,10 @@ function splitCacheKey(key: string): [string?, string?, string?] {
  */
 export function parseLlmJson<T>(raw: string, opts: { array?: boolean } = {}): T | null {
   if (typeof raw !== 'string' || !raw.trim()) return null;
-  const fenceMatch = raw.match(/```(?:json)?\s*\n?([\s\S]*?)```/i);
-  const cleaned = (fenceMatch ? fenceMatch[1] : raw).trim();
+  const stripped = stripReasoningPrelude(raw);
+  if (stripped === null || stripped.length === 0) return null;
+  const fenceMatch = stripped.match(/```(?:json)?\s*\n?([\s\S]*?)```/i);
+  const cleaned = (fenceMatch ? fenceMatch[1] : stripped).trim();
   try {
     const direct = JSON.parse(cleaned);
     if (opts.array && Array.isArray(direct)) return direct as T;

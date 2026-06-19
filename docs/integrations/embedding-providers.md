@@ -1,6 +1,6 @@
-# Embedding providers
+# AI providers
 
-GBrain ships with 16 embedding-provider recipes covering OpenAI, ZeroEntropy, Voyage, OpenRouter (single key, many hosted models), the major hosted alternatives, three local options, and a universal escape hatch (LiteLLM proxy). Run `gbrain providers list` to see the live registry; `gbrain providers explain --json` emits a machine-readable matrix for agents.
+GBrain ships with embedding and chat provider recipes covering OpenAI, ZeroEntropy, Voyage, OpenRouter (single key, many hosted models), the major hosted alternatives, three local options, and a universal escape hatch (LiteLLM proxy). Run `gbrain providers list` to see the live registry; `gbrain providers explain --json` emits a machine-readable matrix for agents.
 
 This page is the human-readable counterpart: capability per provider, env-var setup, dimensions, cost, and known constraints.
 
@@ -19,6 +19,24 @@ As of v0.37, `gbrain init --pglite` auto-detects which provider to use from your
 
 The resolved provider + dimensions get persisted to `~/.gbrain/config.json` atomically, so subsequent runs are deterministic across releases.
 
+Provider secrets can live in the process environment or in config. The generic
+file/DB-plane shape is `provider_api_keys.<provider-id>`; gbrain maps it to the
+env var declared by that provider recipe. Example:
+
+```bash
+gbrain config set provider_api_keys.dashscope sk-...
+```
+
+Equivalent `~/.gbrain/config.json` shape:
+
+```json
+{
+  "provider_api_keys": {
+    "dashscope": "sk-..."
+  }
+}
+```
+
 ## TL;DR table
 
 | Provider | env vars | default dims | cost ($/1M tokens) | local? | multimodal? |
@@ -29,7 +47,6 @@ The resolved provider + dimensions get persisted to `~/.gbrain/config.json` atom
 | `voyage` | `VOYAGE_API_KEY` | 1024 | 0.18 | no | yes (`voyage-multimodal-3`) |
 | `google` | `GOOGLE_GENERATIVE_AI_API_KEY` | 768 | 0.025 | no | no |
 | `azure-openai` | `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT` | 1536 | 0.13 | no | no |
-| `minimax` | `MINIMAX_API_KEY` | 1536 | 0.07 | no | no |
 | `dashscope` | `DASHSCOPE_API_KEY` | 1024 | varies | no | no |
 | `zhipu` | `ZHIPUAI_API_KEY` | 1024 | varies | no | no |
 | `ollama` | (none — runs locally) | 768 | 0 | yes | no |
@@ -39,6 +56,7 @@ The resolved provider + dimensions get persisted to `~/.gbrain/config.json` atom
 | `anthropic` | (no embedding model — chat only) | — | — | — | — |
 | `deepseek` | (no embedding model — chat only) | — | — | — | — |
 | `groq` | (no embedding model — chat only) | — | — | — | — |
+| `minimax` | (no embedding model — chat only) | — | — | — | — |
 
 **Note on local providers.** Ollama and llama-server have no required API key, so they don't show up in env-detection auto-pick. Pick them explicitly with `--embedding-model ollama:<model>` to avoid silently routing to a daemon that may not be running.
 
@@ -123,15 +141,23 @@ Models: `text-embedding-3-large`, `text-embedding-3-small`, `text-embedding-ada-
 
 ### MiniMax (海螺AI)
 
-Set `MINIMAX_API_KEY`. Optional `MINIMAX_GROUP_ID` for org-scoped accounts. Model: `embo-01` (1536 dims).
+MiniMax is chat-only in GBrain. Set `MINIMAX_API_KEY` from the Token Plan page. Model: `minimax:MiniMax-M3` with a 512K-token configured context window for lower-cost Token Plan routing. Pricing is tracked at $0.30 / 1M input tokens and $1.20 / 1M output tokens.
 
-MiniMax's API takes a `type: 'db' | 'query'` field for asymmetric retrieval. v0.32 routes everything as `type='db'` (symmetric retrieval — same vector space for indexing and queries). Asymmetric query support is a v0.32.x follow-up.
+MiniMax's Token Plan docs expose two compatible protocols. GBrain uses the OpenAI-compatible path: base URL `https://api.minimaxi.com/v1`, API key as bearer auth, model ID `MiniMax-M3`. The Anthropic-compatible path (`https://api.minimaxi.com/anthropic`) is not wired as a separate recipe path.
+
+```bash
+export MINIMAX_API_KEY=...
+gbrain config set models.tier.reasoning minimax:MiniMax-M3
+gbrain providers test --touchpoint chat --model minimax:MiniMax-M3
+```
 
 ### DashScope (Alibaba)
 
-Set `DASHSCOPE_API_KEY`. International endpoint at `dashscope-intl.aliyuncs.com` by default; override `provider_base_urls.dashscope` for the China endpoint. Models: `text-embedding-v3` (current; Matryoshka 64-1024 dims), `text-embedding-v2`.
+Set `DASHSCOPE_API_KEY`. International endpoint at `dashscope-intl.aliyuncs.com` by default; override `provider_base_urls.dashscope` for the China endpoint. Models: `text-embedding-v4` (current; Matryoshka 64-2048 dims), `text-embedding-v3` (Matryoshka 64-1024 dims), `text-embedding-v2`.
 
 CJK-dominant content tokenizes denser than OpenAI tiktoken; gbrain declares `chars_per_token: 2` so the batch pre-split leaves headroom.
+
+DashScope `text-embedding-v4` is capped at 10 inputs per request. Alibaba's table is region-specific: Beijing lists 33,000 aggregate tokens per batch, Singapore lists 8,192, and each v4 input text is capped at 8,192 tokens. GBrain uses the conservative 8,192-token batch cap in the shared recipe so one config works across regions; Beijing-region deployments may leave throughput on the table but stay correct.
 
 ### Zhipu AI (BigModel)
 

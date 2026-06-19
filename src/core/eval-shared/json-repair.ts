@@ -23,6 +23,8 @@
  * but the gate can still PASS at >=2/3 successes.
  */
 
+import { stripReasoningPrelude } from '../ai/reasoning-output.ts';
+
 export interface ParsedScore {
   score: number;
   feedback?: string;
@@ -42,9 +44,13 @@ export function parseModelJSON(raw: string): ParsedModelResult {
   if (typeof raw !== 'string' || !raw.trim()) {
     throw new Error('parseModelJSON: empty or non-string input');
   }
+  const stripped = stripReasoningPrelude(raw);
+  if (stripped === null || stripped.length === 0) {
+    throw new Error('parseModelJSON: no final answer after reasoning prelude');
+  }
 
   // Strategy 1: strip markdown fences if present, then JSON.parse.
-  const cleaned = stripFences(raw).trim();
+  const cleaned = stripFences(stripped).trim();
   const direct = tryParse(cleaned);
   if (direct) return shape(direct);
 

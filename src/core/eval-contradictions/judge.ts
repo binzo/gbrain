@@ -20,6 +20,7 @@
  */
 
 import { chat, type ChatResult } from '../ai/gateway.ts';
+import { stripReasoningPrelude } from '../ai/reasoning-output.ts';
 import { parseSeverity, defaultSeverityForVerdict } from './severity-classify.ts';
 import type { JudgeVerdict, ResolutionKind, Verdict } from './types.ts';
 
@@ -35,6 +36,9 @@ const FENCE_RE = /```(?:json)?\s*\n?([\s\S]*?)```/i;
  */
 export function parseJudgeJSON(text: string): unknown {
   if (!text) throw new Error('parseJudgeJSON: empty response');
+  const stripped = stripReasoningPrelude(text);
+  if (stripped === null || stripped.length === 0) throw new Error('parseJudgeJSON: no final answer after reasoning prelude');
+  text = stripped;
   // Strategy 1: direct parse (strict JSON).
   try {
     return JSON.parse(text);

@@ -9,12 +9,16 @@ import { loadConfigWithEngine, type GBrainConfig } from '../src/core/config.ts';
 
 interface FakeEngine {
   getConfig(key: string): Promise<string | null | undefined>;
+  listConfigKeys(prefix: string): Promise<string[]>;
 }
 
 function makeEngine(map: Record<string, string | null | undefined>): FakeEngine {
   return {
     async getConfig(key: string) {
       return map[key];
+    },
+    async listConfigKeys(prefix: string) {
+      return Object.keys(map).filter(k => k.startsWith(prefix));
     },
   };
 }
@@ -92,6 +96,31 @@ describe('loadConfigWithEngine (Phase 4 / F3)', () => {
     expect(merged?.embedding_image_ocr).toBe(true);
   });
 
+  test('provider_api_keys.* DB values merge into provider_api_keys map', async () => {
+    const base: GBrainConfig = { engine: 'postgres' };
+    const engine = makeEngine({
+      'provider_api_keys.dashscope': 'sk-dashscope-db',
+      'provider_api_keys.voyage': 'sk-voyage-db',
+    });
+    const merged = await loadConfigWithEngine(engine, base);
+    expect(merged?.provider_api_keys?.dashscope).toBe('sk-dashscope-db');
+    expect(merged?.provider_api_keys?.voyage).toBe('sk-voyage-db');
+  });
+
+  test('provider_api_keys file value wins over DB value per provider', async () => {
+    const base: GBrainConfig = {
+      engine: 'postgres',
+      provider_api_keys: { dashscope: 'sk-dashscope-file' },
+    };
+    const engine = makeEngine({
+      'provider_api_keys.dashscope': 'sk-dashscope-db',
+      'provider_api_keys.voyage': 'sk-voyage-db',
+    });
+    const merged = await loadConfigWithEngine(engine, base);
+    expect(merged?.provider_api_keys?.dashscope).toBe('sk-dashscope-file');
+    expect(merged?.provider_api_keys?.voyage).toBe('sk-voyage-db');
+  });
+
   test('engine.getConfig throwing is non-fatal — file/env config still returned', async () => {
     const base: GBrainConfig = {
       engine: 'pglite',
@@ -99,6 +128,9 @@ describe('loadConfigWithEngine (Phase 4 / F3)', () => {
     };
     const engine: FakeEngine = {
       async getConfig() {
+        throw new Error('config table missing');
+      },
+      async listConfigKeys() {
         throw new Error('config table missing');
       },
     };
@@ -290,6 +322,9 @@ describe('loadConfigWithEngine (Phase 4 / F3)', () => {
       const base: GBrainConfig = { engine: 'pglite' };
       const engine: FakeEngine = {
         async getConfig() {
+          throw new Error('config table missing');
+        },
+        async listConfigKeys() {
           throw new Error('config table missing');
         },
       };

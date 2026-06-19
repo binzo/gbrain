@@ -37,6 +37,7 @@
 import { createHash } from 'node:crypto';
 import { BaseCyclePhase, type ScopedReadOpts, type BasePhaseOpts } from './base-phase.ts';
 import { chat as gatewayChat } from '../ai/gateway.ts';
+import { stripReasoningPrelude } from '../ai/reasoning-output.ts';
 import { GBrainError } from '../types.ts';
 import type { OperationContext } from '../operations.ts';
 import type { BrainEngine, Take, TakeResolution } from '../engine.ts';
@@ -268,7 +269,9 @@ export function evidenceSignature(evidence: string, judgeModelId: string): strin
  */
 export function parseJudgeOutput(raw: string): JudgeVerdict | null {
   if (!raw || raw.trim().length === 0) return null;
-  let text = raw.trim();
+  const stripped = stripReasoningPrelude(raw);
+  if (stripped === null || stripped.length === 0) return null;
+  let text = stripped;
   const fenced = text.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/);
   if (fenced) text = (fenced[1] ?? '').trim();
   const firstObj = text.indexOf('{');

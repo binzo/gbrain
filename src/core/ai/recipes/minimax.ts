@@ -1,19 +1,10 @@
 import type { Recipe } from '../types.ts';
 
 /**
- * MiniMax (海螺AI). OpenAI-compatible /embeddings endpoint at
- * api.minimax.chat. The flagship embedding model is `embo-01` (1536 dims).
+ * MiniMax (海螺AI) Token Plan. The platform exposes MiniMax-M3 through an
+ * OpenAI-compatible /chat/completions endpoint at api.minimaxi.com.
  *
- * MiniMax's API takes an extra `type: 'db' | 'query'` field for asymmetric
- * retrieval. gbrain currently has no notion of "this is a document vs a
- * query" at the embed-call site (embed() takes only texts), so we default
- * to `type: 'db'` for the indexing path. Queries also embed with `type:
- * 'db'`, making retrieval symmetric. This sacrifices some retrieval
- * quality vs. a true asymmetric setup but works correctly. A follow-up
- * TODO will thread query/document context through the embed seam for
- * full asymmetric support.
- *
- * Reference: https://www.minimaxi.com/document/guides/embeddings
+ * Reference: https://platform.minimaxi.com/docs/token-plan/other-tools
  */
 export const minimax: Recipe = {
   id: 'minimax',
@@ -23,22 +14,20 @@ export const minimax: Recipe = {
   base_url_default: 'https://api.minimaxi.com/v1',
   auth_env: {
     required: ['MINIMAX_API_KEY'],
-    optional: ['MINIMAX_GROUP_ID'],
-    setup_url: 'https://www.minimaxi.com/document/guides/embeddings',
+    setup_url: 'https://platform.minimaxi.com/user-center/payment/token-plan',
   },
   touchpoints: {
-    embedding: {
-      models: ['embo-01'],
-      default_dims: 1536,
-      cost_per_1m_tokens_usd: 0.07,
-      price_last_verified: '2026-05-09',
-      // MiniMax docs don't publish a hard batch-token cap; declare a
-      // conservative 4096-token budget so the gateway pre-splits before
-      // hitting whatever undocumented server-side limit exists. Recursive
-      // halving in the gateway catches token-limit errors at runtime.
-      max_batch_tokens: 4096,
+    chat: {
+      models: ['MiniMax-M3'],
+      supports_tools: true,
+      supports_subagent_loop: true,
+      supports_prompt_cache: false,
+      max_context_tokens: 512_000,
+      cost_per_1m_input_usd: 0.3,
+      cost_per_1m_output_usd: 1.2,
+      price_last_verified: '2026-06-19',
     },
   },
   setup_hint:
-    'Get an API key at https://www.minimaxi.com, then `export MINIMAX_API_KEY=...`',
+    'Get a Token Plan API key at https://platform.minimaxi.com/user-center/payment/token-plan, then `export MINIMAX_API_KEY=...` and use `minimax:MiniMax-M3`.',
 };

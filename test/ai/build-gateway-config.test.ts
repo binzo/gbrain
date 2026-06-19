@@ -85,3 +85,41 @@ describe('buildGatewayConfig env-baseURL passthrough', () => {
     );
   });
 });
+
+describe('buildGatewayConfig provider_api_keys', () => {
+  test('maps provider_api_keys.<recipe> to the recipe required env var', async () => {
+    await withEnv({ DASHSCOPE_API_KEY: undefined }, async () => {
+      const cfg = buildGatewayConfig({
+        provider_api_keys: { dashscope: 'sk-dashscope-config' },
+      } as unknown as GBrainConfig);
+      expect(cfg.env.DASHSCOPE_API_KEY).toBe('sk-dashscope-config');
+    });
+  });
+
+  test('maps provider_api_keys.minimax to MINIMAX_API_KEY', async () => {
+    await withEnv({ MINIMAX_API_KEY: undefined }, async () => {
+      const cfg = buildGatewayConfig({
+        provider_api_keys: { minimax: 'sk-minimax-config' },
+      } as unknown as GBrainConfig);
+      expect(cfg.env.MINIMAX_API_KEY).toBe('sk-minimax-config');
+    });
+  });
+
+  test('process env wins over provider_api_keys config', async () => {
+    await withEnv({ DASHSCOPE_API_KEY: 'sk-dashscope-env' }, async () => {
+      const cfg = buildGatewayConfig({
+        provider_api_keys: { dashscope: 'sk-dashscope-config' },
+      } as unknown as GBrainConfig);
+      expect(cfg.env.DASHSCOPE_API_KEY).toBe('sk-dashscope-env');
+    });
+  });
+
+  test('legacy provider-specific fields still map for backwards compatibility', async () => {
+    await withEnv({ ZEROENTROPY_API_KEY: undefined }, async () => {
+      const cfg = buildGatewayConfig({
+        zeroentropy_api_key: 'ze-config',
+      } as unknown as GBrainConfig);
+      expect(cfg.env.ZEROENTROPY_API_KEY).toBe('ze-config');
+    });
+  });
+});

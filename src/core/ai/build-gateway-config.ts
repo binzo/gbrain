@@ -18,6 +18,7 @@
 
 import type { GBrainConfig } from '../config.ts';
 import type { AIGatewayConfig } from './types.ts';
+import { listRecipes } from './recipes/index.ts';
 
 export function buildGatewayConfig(c: GBrainConfig): AIGatewayConfig {
   // v0.32 (#121 reworked): when ~/.gbrain/config.json declares
@@ -26,6 +27,14 @@ export function buildGatewayConfig(c: GBrainConfig): AIGatewayConfig {
   // env still wins (it's loaded last) — this is a fallback for daemons /
   // launchd-spawned subprocesses that don't propagate ~/.zshrc-sourced keys.
   const envFromConfig: Record<string, string> = {};
+  // Generic provider secret map. Each recipe declares the env var it expects;
+  // storing provider_api_keys.<recipe-id> lets file/DB config supply that key
+  // without adding one-off fields for every hosted provider.
+  for (const recipe of listRecipes()) {
+    const key = c.provider_api_keys?.[recipe.id];
+    const envName = recipe.auth_env?.required?.[0];
+    if (key && envName) envFromConfig[envName] = key;
+  }
   if (c.openai_api_key) envFromConfig.OPENAI_API_KEY = c.openai_api_key;
   if (c.anthropic_api_key) envFromConfig.ANTHROPIC_API_KEY = c.anthropic_api_key;
   // v0.37 fix wave (CDX2-5+6): ZE became the default provider in v0.36 but

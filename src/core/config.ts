@@ -67,6 +67,8 @@ export interface GBrainConfig {
   chat_fallback_chain?: string[];
   /** Optional base URL overrides for openai-compatible providers (keyed by recipe id). */
   provider_base_urls?: Record<string, string>;
+  /** Optional provider API keys (keyed by recipe id), mapped to each recipe's required env var. */
+  provider_api_keys?: Record<string, string>;
   /**
    * Optional storage backend config (S3/Supabase/local). Shape matches
    * `StorageConfig` in `./storage.ts`. Typed as `unknown` here to avoid
@@ -645,6 +647,21 @@ export async function loadConfigWithEngine(
       return undefined;
     }
   }
+  async function dbPrefix(prefix: string): Promise<Record<string, string>> {
+    try {
+      const keys = await (engine as { listConfigKeys?: (prefix: string) => Promise<string[]> }).listConfigKeys?.(prefix);
+      if (!keys || keys.length === 0) return {};
+      const out: Record<string, string> = {};
+      for (const key of keys) {
+        const value = await dbStr(key);
+        if (value === undefined) continue;
+        out[key.slice(prefix.length)] = value;
+      }
+      return out;
+    } catch {
+      return {};
+    }
+  }
 
   const dbMultimodal = await dbBool('embedding_multimodal');
   const dbMultimodalModel = await dbStr('embedding_multimodal_model');
@@ -656,6 +673,7 @@ export async function loadConfigWithEngine(
   // first use so a malformed DB row doesn't kill engine connect.
   const dbEmbeddingColumns = await dbStr('embedding_columns');
   const dbSearchEmbeddingColumn = await dbStr('search_embedding_column');
+  const dbProviderApiKeys = await dbPrefix('provider_api_keys.');
 
   // DB applies only when env did NOT win. Env presence is detected by the
   // sync loadConfig() already setting the field. For each flag, prefer the
@@ -687,6 +705,12 @@ export async function loadConfigWithEngine(
   }
   if (merged.search_embedding_column === undefined && dbSearchEmbeddingColumn !== undefined) {
     merged.search_embedding_column = dbSearchEmbeddingColumn;
+  }
+  if (Object.keys(dbProviderApiKeys).length > 0) {
+    merged.provider_api_keys = {
+      ...dbProviderApiKeys,
+      ...(merged.provider_api_keys ?? {}),
+    };
   }
 
   // v0.41 content-sanity DB-plane merge (D1: lint lifts to read these
@@ -822,6 +846,7 @@ export const KNOWN_CONFIG_KEYS: readonly string[] = [
   'chat_model',
   'chat_fallback_chain',
   'provider_base_urls',
+  'provider_api_keys',
   'storage',
   'eval',
   'eval.capture',
@@ -940,6 +965,7 @@ export const KNOWN_CONFIG_KEY_PREFIXES: readonly string[] = [
   'cycle.',            // cycle.<phase>.*
   'embedding_columns.', // per-column overrides
   'provider_base_urls.', // per-provider base URL overrides
+  'provider_api_keys.', // per-provider API keys
   'content_sanity.',    // v0.41 content-sanity tunables
   'mcp.',               // mcp.publish_skills, mcp.skills_dir (PR1 skill catalog)
   'autopilot.',         // autopilot.nightly_quality_probe.*, autopilot.auto_drain.* (#1685)

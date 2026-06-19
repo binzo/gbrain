@@ -38,6 +38,10 @@ describe('KNOWN_CONFIG_KEYS', () => {
     expect(KNOWN_CONFIG_KEYS).toContain('embed.backfill_max_usd');
   });
 
+  test('contains generic provider secret key', () => {
+    expect(KNOWN_CONFIG_KEYS).toContain('provider_api_keys');
+  });
+
   test('no duplicate entries', () => {
     const set = new Set(KNOWN_CONFIG_KEYS);
     expect(set.size).toBe(KNOWN_CONFIG_KEYS.length);
@@ -49,6 +53,7 @@ describe('KNOWN_CONFIG_KEY_PREFIXES', () => {
     expect(KNOWN_CONFIG_KEY_PREFIXES).toContain('search.');
     expect(KNOWN_CONFIG_KEY_PREFIXES).toContain('models.');
     expect(KNOWN_CONFIG_KEY_PREFIXES).toContain('dream.');
+    expect(KNOWN_CONFIG_KEY_PREFIXES).toContain('provider_api_keys.');
   });
 
   test('prefixes end in `.` (consistent shape)', () => {
@@ -122,6 +127,10 @@ describe('prefix vs known-key gate logic (mirrored from runConfig)', () => {
 
   test('models.custom.x (under prefix) → "prefix"', () => {
     expect(gate('models.custom.x')).toBe('prefix');
+  });
+
+  test('provider_api_keys.dashscope (under prefix) → "prefix"', () => {
+    expect(gate('provider_api_keys.dashscope')).toBe('prefix');
   });
 
   test('bug-reporter: embedding.provider → "unknown" (no prefix match)', () => {

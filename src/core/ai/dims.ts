@@ -101,11 +101,10 @@ export function isValidOpenAITextEmbedding3Dim(modelId: string, dims: number): b
  * Voyage's wire name in voyageCompatFetch.
  *
  * v0.35.0.0+ 4th param `inputType`: 'query' | 'document' for asymmetric
- * providers (ZE zembed-1, Voyage v3+, MiniMax embo-01). When omitted, the
+ * providers (ZE zembed-1, Voyage v3+). When omitted, the
  * existing document-encoding behavior is preserved (no `input_type` field
- * emitted for symmetric providers; legacy hardcoded `type:'db'` for
- * embo-01). gateway.embedQuery() threads `'query'`; gateway.embed() threads
- * `'document'`. Per-model filtering happens INSIDE the switch — the field
+ * emitted for symmetric providers). gateway.embedQuery() threads `'query'`;
+ * gateway.embed() threads `'document'`. Per-model filtering happens INSIDE the switch — the field
  * is NEVER emitted for providers that don't accept it (OpenAI text-3,
  * DashScope, Zhipu) so the request body stays clean for those endpoints.
  */
@@ -212,21 +211,13 @@ export function dimsProviderOptions(
         }
         return { openaiCompatible: { dimensions: dims } };
       }
-      // DashScope text-embedding-v3 (Matryoshka 64-1024) and Zhipu
+      // DashScope text-embedding-v4/v3 (Matryoshka; v4 up to 2048) and Zhipu
       // embedding-3 (Matryoshka 256-2048) both accept `dimensions` on the
       // OpenAI-compat path. Without this, user-selected non-default dims are
       // silently ignored and the provider returns its default size.
       // Symmetric retrieval — inputType ignored.
-      if (modelId === 'text-embedding-v3' || modelId === 'embedding-3') {
+      if (modelId === 'text-embedding-v4' || modelId === 'text-embedding-v3' || modelId === 'embedding-3') {
         return { openaiCompatible: { dimensions: dims } };
-      }
-      // MiniMax embo-01 takes a `type: 'db' | 'query'` field for asymmetric
-      // retrieval. Today still hardcoded to 'db' for back-compat — opting
-      // into the new inputType seam is a follow-up (see plan's deferred
-      // section "Fix MiniMax embo-01 asymmetry"). When fixed: map
-      // inputType==='query' → type:'query', else 'db'.
-      if (modelId === 'embo-01') {
-        return { openaiCompatible: { type: 'db' } };
       }
       return undefined;
   }

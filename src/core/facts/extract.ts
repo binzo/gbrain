@@ -22,6 +22,7 @@
  */
 
 import { chat, embedOne, isAvailable } from '../ai/gateway.ts';
+import { stripReasoningPrelude } from '../ai/reasoning-output.ts';
 import type { ChatResult } from '../ai/gateway.ts';
 import { INJECTION_PATTERNS } from '../think/sanitize.ts';
 import { resolveModel } from '../model-config.ts';
@@ -273,7 +274,9 @@ interface RawExtracted {
  * the model included it. Production callers should use extractFactsFromTurn.
  */
 export function parseExtractorJson(raw: string): RawExtracted[] | null {
-  const cleaned = raw.trim().replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
+  const stripped = stripReasoningPrelude(raw);
+  if (stripped === null || stripped.length === 0) return null;
+  const cleaned = stripped.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
   // Strict.
   const direct = tryArrayShape(cleaned);
   if (direct) return direct;

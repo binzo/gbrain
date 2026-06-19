@@ -129,6 +129,11 @@ describe('parseJudgeOutput', () => {
     expect(parseJudgeOutput(raw)?.verdict).toBe('partial');
   });
 
+  test('strips reasoning-model <think> prelude before judge JSON', () => {
+    const raw = '<think>{"verdict":"incorrect"}</think>\n{"verdict":"correct","confidence":0.92,"reasoning":"ok"}';
+    expect(parseJudgeOutput(raw)).toEqual({ verdict: 'correct', confidence: 0.92, reasoning: 'ok' });
+  });
+
   test('clamps confidence to [0,1]', () => {
     expect(parseJudgeOutput('{"verdict":"correct","confidence":2,"reasoning":"x"}')?.confidence).toBe(1);
     expect(parseJudgeOutput('{"verdict":"correct","confidence":-1,"reasoning":"x"}')?.confidence).toBe(0);

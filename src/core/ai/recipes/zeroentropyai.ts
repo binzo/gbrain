@@ -6,7 +6,7 @@ import type { Recipe } from '../types.ts';
  *
  *  - zembed-1 — flexible-dim embedding (2560 default; also 1280/640/320/160/80/40),
  *    distilled from zerank-2, 32K context. Asymmetric `input_type: query|document`
- *    encoding (like Voyage and MiniMax). $0.025/1M tokens (sale) / $0.05 regular.
+ *    encoding (like Voyage). $0.025/1M tokens (sale) / $0.05 regular.
  *
  *  - zerank-{2,1,1-small} — cross-encoder rerankers. zerank-2 is flagship;
  *    multilingual + instruction-following; $0.025/1M tokens.

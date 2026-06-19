@@ -23,6 +23,7 @@
  */
 
 import { chat as defaultChat, getChatModel, type ChatResult, type ChatOpts } from '../ai/gateway.ts';
+import { stripReasoningPrelude } from '../ai/reasoning-output.ts';
 import { splitProviderModelId } from '../model-id.ts';
 
 export const PROMPT_VERSION = 'brainstorm-judge-v1';
@@ -321,6 +322,9 @@ Respond with ONLY the JSON block, nothing before or after.`;
 
 export function parseJudgeJSON(text: string): unknown {
   if (!text) throw new Error('parseJudgeJSON: empty response');
+  const stripped = stripReasoningPrelude(text);
+  if (stripped === null || stripped.length === 0) throw new Error('parseJudgeJSON: no final answer after reasoning prelude');
+  text = stripped;
   try {
     return JSON.parse(text);
   } catch {

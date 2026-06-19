@@ -1,5 +1,5 @@
 import type { BrainEngine } from '../core/engine.ts';
-import { loadConfig, loadConfigWithEngine } from '../core/config.ts';
+import { loadConfig, loadConfigFileOnly, saveConfig, loadConfigWithEngine, type GBrainConfig } from '../core/config.ts';
 import {
   getEmbeddingColumnRegistry,
   validateColumnKey,
@@ -26,13 +26,42 @@ function redactUrl(url: string): string {
 export function isSensitiveConfigKey(key: string): boolean {
   const lower = key.toLowerCase();
   // Word-boundary matches: foo_key, foo.key, key_foo, key, api_key, ...
-  return /(^|[._-])(key|secret|token|password|pwd|passwd|auth)([._-]|$)/.test(lower);
+  return /(^|[._-])(key|keys|secret|token|password|pwd|passwd|auth)([._-]|$)/.test(lower);
 }
 
 export function redactConfigValue(key: string, value: string): string {
   if (value.includes('postgresql://')) return redactUrl(value);
   if (isSensitiveConfigKey(key)) return '***';
   return value;
+}
+
+function redactConfigDisplay(key: string, value: unknown): unknown {
+  if (typeof value === 'string') return redactConfigValue(key, value);
+  if (key === 'provider_api_keys' && value && typeof value === 'object' && !Array.isArray(value)) {
+    return Object.fromEntries(Object.keys(value).map(k => [k, '***']));
+  }
+  return value;
+}
+
+const PROVIDER_API_KEYS_PREFIX = 'provider_api_keys.';
+
+function setProviderApiKeyFile(providerId: string, value: string): void {
+  const cfg: GBrainConfig = loadConfigFileOnly() ?? ({ engine: 'postgres' } as GBrainConfig);
+  cfg.provider_api_keys = {
+    ...(cfg.provider_api_keys ?? {}),
+    [providerId]: value,
+  };
+  saveConfig(cfg);
+}
+
+function unsetProviderApiKeyFile(providerId: string): boolean {
+  const cfg = loadConfigFileOnly();
+  if (!cfg?.provider_api_keys || !Object.hasOwn(cfg.provider_api_keys, providerId)) return false;
+  const next = { ...cfg.provider_api_keys };
+  delete next[providerId];
+  cfg.provider_api_keys = Object.keys(next).length > 0 ? next : undefined;
+  saveConfig(cfg);
+  return true;
 }
 
 export async function runConfig(engine: BrainEngine, args: string[]) {
@@ -46,7 +75,7 @@ export async function runConfig(engine: BrainEngine, args: string[]) {
     }
     console.log('GBrain config:');
     for (const [k, v] of Object.entries(config)) {
-      const display = typeof v === 'string' ? redactConfigValue(k, v) : v;
+      const display = redactConfigDisplay(k, v);
       console.log(`  ${k}: ${display}`);
     }
     return;
@@ -64,8 +93,17 @@ export async function runConfig(engine: BrainEngine, args: string[]) {
         console.error('Usage: gbrain config unset --pattern <prefix>');
         process.exit(1);
       }
+      let fileDeleted = 0;
+      if (prefix === PROVIDER_API_KEYS_PREFIX) {
+        const cfg = loadConfigFileOnly();
+        if (cfg?.provider_api_keys && Object.keys(cfg.provider_api_keys).length > 0) {
+          fileDeleted = Object.keys(cfg.provider_api_keys).length;
+          cfg.provider_api_keys = undefined;
+          saveConfig(cfg);
+        }
+      }
       const keys = await engine.listConfigKeys(prefix);
-      if (keys.length === 0) {
+      if (keys.length === 0 && fileDeleted === 0) {
         console.log(`No keys match prefix "${prefix}".`);
         return;
       }
@@ -74,8 +112,9 @@ export async function runConfig(engine: BrainEngine, args: string[]) {
         const n = await engine.unsetConfig(k);
         if (n > 0) deleted += n;
       }
-      console.log(`Unset ${deleted} key(s) matching "${prefix}":`);
+      console.log(`Unset ${deleted + fileDeleted} key(s) matching "${prefix}":`);
       for (const k of keys) console.log(`  - ${k}`);
+      if (fileDeleted > 0) console.log(`  - ${prefix}* (file plane)`);
       return;
     }
 
@@ -84,8 +123,12 @@ export async function runConfig(engine: BrainEngine, args: string[]) {
       console.error('Usage: gbrain config unset <key> | --pattern <prefix>');
       process.exit(1);
     }
+    let fileDeleted = false;
+    if (key.startsWith(PROVIDER_API_KEYS_PREFIX)) {
+      fileDeleted = unsetProviderApiKeyFile(key.slice(PROVIDER_API_KEYS_PREFIX.length));
+    }
     const n = await engine.unsetConfig(key);
-    if (n > 0) {
+    if (n > 0 || fileDeleted) {
       console.log(`Unset ${key}`);
     } else {
       console.error(`Config key not found: ${key}`);
@@ -98,6 +141,14 @@ export async function runConfig(engine: BrainEngine, args: string[]) {
   const value = args[2];
 
   if (action === 'get' && key) {
+    if (key.startsWith(PROVIDER_API_KEYS_PREFIX)) {
+      const providerId = key.slice(PROVIDER_API_KEYS_PREFIX.length);
+      const fileVal = loadConfigFileOnly()?.provider_api_keys?.[providerId];
+      if (fileVal) {
+        console.log(fileVal);
+        return;
+      }
+    }
     const val = await engine.getConfig(key);
     if (val !== null) {
       console.log(val);
@@ -306,6 +357,9 @@ export async function runConfig(engine: BrainEngine, args: string[]) {
       }
     }
 
+    if (key.startsWith(PROVIDER_API_KEYS_PREFIX)) {
+      setProviderApiKeyFile(key.slice(PROVIDER_API_KEYS_PREFIX.length), value);
+    }
     await engine.setConfig(key, value);
     // v0.36.x #892: redact sensitive values in confirmation output. API
     // keys / tokens / passwords are commonly set from terminals with

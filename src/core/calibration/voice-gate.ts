@@ -26,6 +26,7 @@
  */
 
 import { chat as gatewayChat } from '../ai/gateway.ts';
+import { stripReasoningPrelude } from '../ai/reasoning-output.ts';
 import type { VoiceGateMode } from './templates.ts';
 
 /**
@@ -175,7 +176,9 @@ export function parseJudgeOutput(raw: string): VoiceGateJudgeVerdict {
   if (!raw || raw.trim().length === 0) {
     return { verdict: 'academic', reason: 'empty_judge_output' };
   }
-  let text = raw.trim();
+  const stripped = stripReasoningPrelude(raw);
+  if (stripped === null || stripped.length === 0) return { verdict: 'academic', reason: 'parse_failed' };
+  let text = stripped;
   const fenced = text.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/);
   if (fenced) text = (fenced[1] ?? '').trim();
   const firstObj = text.indexOf('{');

@@ -2,8 +2,8 @@ import type { Recipe } from '../types.ts';
 
 /**
  * Alibaba DashScope (灵积). OpenAI-compatible /embeddings endpoint at
- * dashscope-intl.aliyuncs.com. Hosts text-embedding-v2 (older) and
- * text-embedding-v3 (current; Matryoshka-aware up to 1024 dims).
+ * dashscope-intl.aliyuncs.com. Hosts text-embedding-v4 (current;
+ * Matryoshka-aware up to 2048 dims), text-embedding-v3, and text-embedding-v2.
  *
  * Reference: https://help.aliyun.com/zh/model-studio/getting-started/
  *
@@ -24,14 +24,17 @@ export const dashscope: Recipe = {
   },
   touchpoints: {
     embedding: {
-      models: ['text-embedding-v3', 'text-embedding-v2'],
+      models: ['text-embedding-v4', 'text-embedding-v3', 'text-embedding-v2'],
       default_dims: 1024,
-      dims_options: [64, 128, 256, 512, 768, 1024],
-      // Alibaba doesn't publish a hard batch-token cap for the OpenAI-compat
-      // path. Conservative declaration so the gateway pre-splits before
-      // hitting whatever undocumented server-side limit exists.
+      dims_options: [64, 128, 256, 512, 768, 1024, 1536, 2048],
+      // Alibaba documents region-specific aggregate caps for v4: Beijing
+      // allows 33,000 tokens per batch, while the Singapore table lists
+      // 8,192. Each v4 input text is capped at 8,192 tokens. Keep the
+      // cross-region conservative cap here; China-region users overriding
+      // base_url trade throughput, not correctness.
       max_batch_tokens: 8192,
-      // text-embedding-v3 mixes English + CJK heavily; the tokenizer is
+      max_batch_items: 10,
+      // text-embedding-v4/v3 mix English + CJK heavily; the tokenizer is
       // closer to Voyage density than OpenAI tiktoken for CJK-dominant
       // content. Conservative chars_per_token=2 leaves headroom.
       chars_per_token: 2,

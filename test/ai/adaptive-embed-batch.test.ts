@@ -129,6 +129,18 @@ describe('splitByTokenBudget (pure helper)', () => {
     expect(splitByTokenBudget([], 120_000, 1)).toEqual([]);
   });
 
+  test('maxItems caps item count even when token budget has room', () => {
+    const texts = Array.from({ length: 25 }, (_, i) => `t${i}`);
+    const result = splitByTokenBudget(texts, 120_000, 1, 10);
+    expect(result.map(b => b.length)).toEqual([10, 10, 5]);
+  });
+
+  test('maxItems combines with token budget', () => {
+    const texts = Array.from({ length: 8 }, (_, i) => `${i}`.repeat(1000));
+    const result = splitByTokenBudget(texts, 2500, 1, 3);
+    expect(result.map(b => b.length)).toEqual([2, 2, 2, 2]);
+  });
+
   test('single text larger than budget still goes in a batch (split helper does not subdivide)', () => {
     const result = splitByTokenBudget(['a'.repeat(200_000)], 120_000, 1);
     expect(result).toHaveLength(1);

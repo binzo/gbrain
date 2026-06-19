@@ -22,6 +22,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { chat as gatewayChat } from '../ai/gateway.ts';
+import { stripReasoningPrelude } from '../ai/reasoning-output.ts';
 import { errorFor } from '../errors.ts';
 import { atomicWrite } from './apply-edits.ts';
 import { BOOTSTRAP_PENDING_REVIEW, type RuleCheck } from './types.ts';
@@ -160,16 +161,18 @@ export async function runBootstrap(opts: BootstrapOpts): Promise<BootstrapResult
 }
 
 function parseChecksResponse(raw: string): RuleCheck[] {
+  const stripped = stripReasoningPrelude(raw);
+  if (stripped === null || stripped.length === 0) return [];
   try {
-    const fenced = raw.match(/```(?:json)?\s*\n?([\s\S]*?)```/i);
-    const cleaned = (fenced ? fenced[1]! : raw).trim();
+    const fenced = stripped.match(/```(?:json)?\s*\n?([\s\S]*?)```/i);
+    const cleaned = (fenced ? fenced[1]! : stripped).trim();
     const parsed = JSON.parse(cleaned) as { checks?: unknown };
     if (parsed && Array.isArray(parsed.checks)) {
       return validateChecks(parsed.checks);
     }
   } catch { /* try fallback */ }
   // Fallback: first {...} substring.
-  const match = raw.match(/\{[\s\S]*\}/);
+  const match = stripped.match(/\{[\s\S]*\}/);
   if (!match) return [];
   try {
     const parsed = JSON.parse(match[0]) as { checks?: unknown };
@@ -272,8 +275,9 @@ export async function runBootstrapFromSkill(opts: BootstrapFromSkillOpts): Promi
  * and stable for loadBenchmark's duplicate-id check.
  */
 function parseSkillBenchmarkJsonl(raw: string, skillName: string): { generated: string[]; skipped: number } {
-  const fence = raw.match(/```(?:json|jsonl)?\s*\n?([\s\S]*?)```/i);
-  const body = fence ? fence[1]! : raw;
+  const stripped = stripReasoningPrelude(raw) ?? '';
+  const fence = stripped.match(/```(?:json|jsonl)?\s*\n?([\s\S]*?)```/i);
+  const body = fence ? fence[1]! : stripped;
   const lines = body.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
 
   const generated: string[] = [];
