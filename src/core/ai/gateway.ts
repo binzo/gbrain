@@ -2564,6 +2564,17 @@ export async function expand(query: string): Promise<string[]> {
 
   try {
     const { model, recipe, modelId } = await resolveExpansionProvider(getExpansionModel());
+    const cfg = requireConfig();
+    const providerOptions: Record<string, any> = {};
+    // MiniMax-M3 needs reasoning_split on expansion so the schemaless text
+    // parser receives final JSON without a leading <think> block. Reuse the
+    // model-scoped chat options for both generation paths.
+    if (recipe.id === 'minimax') {
+      applyConfiguredChatProviderOptions(providerOptions, cfg, recipe.id, modelId);
+    }
+    const resolvedProviderOptions = Object.keys(providerOptions).length > 0
+      ? providerOptions
+      : undefined;
 
     let expansions: string[];
 
@@ -2575,6 +2586,7 @@ export async function expand(query: string): Promise<string[]> {
       const { text } = await generateText({
         model,
         abortSignal: withDefaultTimeout(undefined, AI_CHAT_TIMEOUT_MS),
+        providerOptions: resolvedProviderOptions,
         prompt: expansionPrompt,
       });
       return parseExpansionResponse(text) ?? [];
@@ -2587,6 +2599,7 @@ export async function expand(query: string): Promise<string[]> {
         model,
         schema: ExpansionSchema,
         abortSignal: withDefaultTimeout(undefined, AI_CHAT_TIMEOUT_MS),
+        providerOptions: resolvedProviderOptions,
         prompt: expansionPrompt,
       });
       expansions = result.object?.queries ?? [];
@@ -2599,6 +2612,7 @@ export async function expand(query: string): Promise<string[]> {
           model,
           schema: ExpansionSchema,
           abortSignal: withDefaultTimeout(undefined, AI_CHAT_TIMEOUT_MS),
+          providerOptions: resolvedProviderOptions,
           prompt: expansionPrompt,
         });
         expansions = result.object?.queries ?? [];

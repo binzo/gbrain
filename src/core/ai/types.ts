@@ -431,7 +431,11 @@ export interface AIGatewayConfig {
   chat_fallback_chain?: string[];
   /** Optional per-provider base URL override (openai-compatible variants). */
   base_urls?: Record<string, string>;
-  /** Optional chat providerOptions overrides keyed by recipe id or "recipe:modelId". */
+  /**
+   * Optional chat providerOptions overrides keyed by recipe id or "recipe:modelId".
+   * MiniMax expansion reuses its model-scoped options so reasoning can remain
+   * split from the generated JSON content.
+   */
   provider_chat_options?: Record<string, Record<string, unknown>>;
   /** Env snapshot read once at configuration time. Gateway never reads process.env at call time. */
   env: Record<string, string | undefined>;

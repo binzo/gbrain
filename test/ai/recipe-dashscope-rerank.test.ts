@@ -12,6 +12,7 @@
 
 import { describe, expect, test } from 'bun:test';
 import { getRecipe } from '../../src/core/ai/recipes/index.ts';
+import { buildGatewayConfig } from '../../src/core/ai/build-gateway-config.ts';
 import { defaultResolveAuth } from '../../src/core/ai/gateway.ts';
 import { AIConfigError } from '../../src/core/ai/errors.ts';
 
@@ -44,6 +45,22 @@ describe('recipe: dashscope-rerank', () => {
     expect(combined).toBe('https://dashscope-intl.aliyuncs.com/compatible-api/v1/reranks');
     expect(combined).not.toContain('/v1/v1/');
     expect(combined.endsWith('/reranks')).toBe(true);
+  });
+
+  test('WorkspaceId base URL can be configured independently from embeddings', () => {
+    const embeddingBase = 'https://ws-123.cn-beijing.maas.aliyuncs.com/compatible-mode/v1';
+    const rerankerBase = 'https://ws-123.cn-beijing.maas.aliyuncs.com/compatible-api/v1';
+    const cfg = buildGatewayConfig({
+      provider_base_urls: {
+        dashscope: embeddingBase,
+        'dashscope-rerank': rerankerBase,
+      },
+    } as never);
+    const reranker = getRecipe('dashscope-rerank')!;
+    const url = `${cfg.base_urls?.['dashscope-rerank']}${reranker.touchpoints.reranker!.path}`;
+
+    expect(cfg.base_urls?.dashscope).toBe(embeddingBase);
+    expect(url).toBe(`${rerankerBase}/reranks`);
   });
 
   test('lists only the live-verified compat-surface model', () => {

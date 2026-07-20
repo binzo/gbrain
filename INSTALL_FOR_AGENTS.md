@@ -57,9 +57,14 @@ export OPENAI_API_KEY=sk-...          # fallback for vector search; also used fo
 export ANTHROPIC_API_KEY=sk-ant-...   # optional, improves search quality via query expansion
 ```
 
-Save to shell profile or `.env`. Keys are picked up by `gbrain config set` automatically
-or can be stored in `~/.gbrain/config.json` (file plane). Without any embedding provider,
-keyword search still works. Without Anthropic, search works but skips query expansion.
+Save to shell profile or `.env`. Hosted provider keys can also be stored as
+explicit top-level fields in the local `~/.gbrain/config.json`, such as
+`zeroentropy_api_key`, `dashscope_api_key`, or `minimax_api_key`. These fields
+are file-plane settings; edit the JSON file directly rather than using
+`gbrain config set`, which writes the database plane. Process environment
+variables have the highest precedence.
+Without any embedding provider, keyword search still works. Without Anthropic,
+search works but skips query expansion.
 
 ## Step 3: Create the Brain
 

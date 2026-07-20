@@ -52,6 +52,8 @@ The mechanical reason: hybrid ranking is locally optimal per strategy but global
 
 The cost: +150ms p50 latency, ~$0.025/M tokens. Disabled with `gbrain config set search.reranker.enabled false`. For agent loops that do downstream LLM work after retrieval, the latency is invisible.
 
+The reranker provider is replaceable. DashScope users select `dashscope-rerank:qwen3-rerank`; the separate recipe shares `DASHSCOPE_API_KEY` with `dashscope:text-embedding-v4` but owns its distinct `/compatible-api/v1` base URL.
+
 ## Source-aware ranking
 
 Hybrid search applies a source-factor CASE expression at the SQL layer (lives in `src/core/search/sql-ranking.ts`). Curated content like `originals/`, `concepts/`, `writing/` outranks bulk content like `your-openclaw/chat/`, `daily/`, `media/x/`. Hard-exclude prefixes (`test/`, `attachments/`, `.raw/`) filter at retrieval, not post-rank.
@@ -140,7 +142,7 @@ hybrid search:
 graph augment (typed-edge traversal from any seed)
        │
        ▼
-reranker (zerank-2 cross-encoder, top 30 → reordered)
+reranker (configured cross-encoder; zerank-2 default, top 30 → reordered)
        │
        ▼
 token-budget enforcement (per mode bundle)

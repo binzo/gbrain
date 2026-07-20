@@ -9,16 +9,25 @@
  *  - #1977: chat touchpoint declared; minimaxCompatFetch rewrites the
  *    embedding wire shape both directions, passes chat through with the
  *    response body UNREAD (the consumed-body regression), fail-open.
+ *  - MiniMax-M3 query expansion forwards model-scoped reasoning options.
  */
 
 import { afterEach, describe, expect, test } from 'bun:test';
 import { getRecipe } from '../../src/core/ai/recipes/index.ts';
 import { minimaxCompatFetch } from '../../src/core/ai/recipes/minimax.ts';
-import { defaultResolveAuth } from '../../src/core/ai/gateway.ts';
+import {
+  configureGateway,
+  defaultResolveAuth,
+  expand,
+  resetGateway,
+} from '../../src/core/ai/gateway.ts';
 import { dimsProviderOptions } from '../../src/core/ai/dims.ts';
+import { assertTouchpoint } from '../../src/core/ai/model-resolver.ts';
 import { AIConfigError } from '../../src/core/ai/errors.ts';
 
 describe('recipe: minimax', () => {
+  afterEach(() => resetGateway());
+
   test('registered with expected shape', () => {
     const r = getRecipe('minimax');
     expect(r).toBeDefined();
@@ -69,11 +78,76 @@ describe('recipe: minimax', () => {
     expect(r.touchpoints.chat!.supports_subagent_loop).toBe(false);
   });
 
+  test('expansion touchpoint permits MiniMax-M3', () => {
+    const r = getRecipe('minimax')!;
+    expect(r.touchpoints.expansion?.models).toEqual(['MiniMax-M3']);
+    expect(() => assertTouchpoint(r, 'expansion', 'MiniMax-M3')).not.toThrow();
+  });
+
   test('recipe ships minimaxCompatFetch via compat.fetch (no env-templated base URL)', () => {
     const r = getRecipe('minimax')!;
     expect(r.compat?.fetch).toBe(minimaxCompatFetch);
     // base_urls config override must keep working: no resolveOpenAICompatConfig.
     expect(r.resolveOpenAICompatConfig).toBeUndefined();
+  });
+
+  test('expansion forwards adaptive thinking options and parses fenced MiniMax JSON', async () => {
+    const originalFetch = globalThis.fetch;
+    let requestBody: Record<string, unknown> | undefined;
+    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      requestBody = JSON.parse(String(init?.body ?? '{}'));
+      return new Response(JSON.stringify({
+        id: 'minimax-expansion-test',
+        object: 'chat.completion',
+        created: 1,
+        model: 'MiniMax-M3',
+        choices: [{
+          index: 0,
+          finish_reason: 'stop',
+          message: {
+            role: 'assistant',
+            content: [
+              '```json',
+              JSON.stringify({
+                queries: ['vector database design', 'semantic retrieval storage'],
+              }),
+              '```',
+            ].join('\n'),
+            reasoning_content: 'internal reasoning',
+          },
+        }],
+        usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+
+    try {
+      configureGateway({
+        expansion_model: 'minimax:MiniMax-M3',
+        provider_chat_options: {
+          'minimax:MiniMax-M3': {
+            thinking: { type: 'adaptive' },
+            reasoning_split: true,
+          },
+        },
+        env: { MINIMAX_API_KEY: 'fake-mm-key' },
+      });
+
+      expect(await expand('vector database architecture')).toEqual([
+        'vector database architecture',
+        'vector database design',
+        'semantic retrieval storage',
+      ]);
+      expect(requestBody?.model).toBe('MiniMax-M3');
+      expect(requestBody?.thinking).toEqual({ type: 'adaptive' });
+      expect(requestBody?.reasoning_split).toBe(true);
+      const messages = requestBody?.messages as Array<{ content: string }> | undefined;
+      expect(messages?.[0]?.content).toContain('key MUST be exactly "queries"');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 
@@ -131,8 +205,8 @@ describe('minimaxCompatFetch (#1977)', () => {
       method: 'POST',
       body: JSON.stringify({ model: 'MiniMax-M3', messages: [{ role: 'user', content: 'say hi' }] }),
     });
-    expect(res.bodyUsed).toBe(false); // the broken PR #2882 wrapper consumed this
-    const json = await res.json(); // must NOT throw "Body already used"
+    expect(res.bodyUsed).toBe(false);
+    const json = await res.json();
     expect(json.choices[0].message.content).toBe('hi');
   });
 

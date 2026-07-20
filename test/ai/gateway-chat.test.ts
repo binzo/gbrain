@@ -34,7 +34,7 @@ import { listRecipes, getRecipe } from '../../src/core/ai/recipes/index.ts';
 import type { Recipe } from '../../src/core/ai/types.ts';
 
 describe('chat touchpoint — recipe registry', () => {
-  test('all six chat-capable providers ship a chat touchpoint with supports_subagent_loop', () => {
+  test('core chat-capable providers ship a chat touchpoint with supports_subagent_loop', () => {
     const expected = ['anthropic', 'openai', 'google', 'deepseek', 'groq', 'together'];
     for (const id of expected) {
       const r = getRecipe(id);
@@ -69,6 +69,7 @@ describe('chat touchpoint — recipe registry', () => {
     expect(getRecipe('deepseek')!.base_url_default).toBe('https://api.deepseek.com/v1');
     expect(getRecipe('groq')!.base_url_default).toBe('https://api.groq.com/openai/v1');
     expect(getRecipe('together')!.base_url_default).toBe('https://api.together.xyz/v1');
+    expect(getRecipe('minimax')!.base_url_default).toBe('https://api.minimaxi.com/v1');
   });
 });
 
@@ -345,6 +346,45 @@ describe('chat touchpoint — provider_chat_options passthrough', () => {
         temperature: 0.2,
       },
     });
+  });
+
+  test('MiniMax-M3 keeps thinking separate from the final chat text', async () => {
+    let captured: Record<string, any> | undefined;
+    __setGenerateTextTransportForTests(async (args: any) => {
+      captured = args.providerOptions;
+      return {
+        content: [
+          { type: 'reasoning', text: 'internal reasoning' },
+          { type: 'text', text: '{"ok":true}' },
+        ],
+        finishReason: 'stop',
+        usage: { inputTokens: 1, outputTokens: 2 },
+      } as any;
+    });
+    configureGateway({
+      chat_model: 'minimax:MiniMax-M3',
+      provider_chat_options: {
+        'minimax:MiniMax-M3': {
+          thinking: { type: 'adaptive' },
+          reasoning_split: true,
+        },
+      },
+      env: { MINIMAX_API_KEY: 'fake' },
+    });
+
+    const result = await chat({
+      model: 'minimax:MiniMax-M3',
+      messages: [{ role: 'user', content: 'return JSON' }],
+    });
+
+    expect(captured).toEqual({
+      minimax: {
+        thinking: { type: 'adaptive' },
+        reasoning_split: true,
+      },
+    });
+    expect(result.text).toBe('{"ok":true}');
+    expect(result.blocks).toEqual([{ type: 'text', text: '{"ok":true}' }]);
   });
 
   test('no provider_chat_options keeps providerOptions undefined when cache is off', async () => {

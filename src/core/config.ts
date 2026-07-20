@@ -80,6 +80,12 @@ export interface GBrainConfig {
    * caveat) as voyage_api_key above.
    */
   google_api_key?: string;
+  /**
+   * MiniMax API key. Local-file slot folded into MINIMAX_API_KEY by
+   * buildGatewayConfig so daemon/MCP processes do not depend on shell-profile
+   * environment propagation. Same DB-plane caveat as voyage_api_key above.
+   */
+  minimax_api_key?: string;
   /** Azure OpenAI (keyless/Entra). Non-secret endpoint + deployment + Entra opt-in,
    * folded into the gateway env so the azure-openai recipe works in any shell.
    * The bearer token is minted at request time via `az` — no secret stored here. */
@@ -112,7 +118,11 @@ export interface GBrainConfig {
   chat_fallback_chain?: string[];
   /** Optional base URL overrides for openai-compatible providers (keyed by recipe id). */
   provider_base_urls?: Record<string, string>;
-  /** Optional chat request providerOptions overrides keyed by recipe id or "recipe:modelId". */
+  /**
+   * Optional chat request providerOptions overrides keyed by recipe id or "recipe:modelId".
+   * MiniMax query expansion reuses its model-scoped options so reasoning stays
+   * separate from the generated JSON content.
+   */
   provider_chat_options?: Record<string, Record<string, unknown>>;
   /**
    * Optional storage backend config (S3/Supabase/local). Shape matches
@@ -938,6 +948,7 @@ export const KNOWN_CONFIG_KEYS: readonly string[] = [
   'voyage_api_key',
   'dashscope_api_key',
   'google_api_key',
+  'minimax_api_key',
   'azure_openai_endpoint',
   'azure_openai_deployment',
   'azure_openai_use_entra',
@@ -1106,7 +1117,7 @@ export const KNOWN_CONFIG_KEY_PREFIXES: readonly string[] = [
   'cycle.',            // cycle.<phase>.*
   'embedding_columns.', // per-column overrides
   'provider_base_urls.', // per-provider base URL overrides
-  'provider_chat_options.', // per-provider / per-model chat providerOptions
+  'provider_chat_options.', // per-provider / per-model generation providerOptions
   'content_sanity.',    // v0.41 content-sanity tunables
   'mcp.',               // mcp.publish_skills, mcp.skills_dir (PR1 skill catalog)
   'autopilot.',         // autopilot.nightly_quality_probe.*, autopilot.auto_drain.* (#1685)

@@ -1,6 +1,6 @@
-# Embedding providers
+# AI providers
 
-GBrain ships with 16 embedding-provider recipes covering OpenAI, ZeroEntropy, Voyage, OpenRouter (single key, many hosted models), the major hosted alternatives, three local options, and a universal escape hatch (LiteLLM proxy). Run `gbrain providers list` to see the live registry; `gbrain providers explain --json` emits a machine-readable matrix for agents.
+GBrain ships with embedding and chat provider recipes covering OpenAI, ZeroEntropy, Voyage, OpenRouter (single key, many hosted models), the major hosted alternatives, three local options, and a universal escape hatch (LiteLLM proxy). Run `gbrain providers list` to see the live registry; `gbrain providers explain --json` emits a machine-readable matrix for agents.
 
 This page is the human-readable counterpart: capability per provider, env-var setup, dimensions, cost, and known constraints.
 
@@ -19,6 +19,20 @@ As of v0.37, `gbrain init --pglite` auto-detects which provider to use from your
 
 The resolved provider + dimensions get persisted to `~/.gbrain/config.json` atomically, so subsequent runs are deterministic across releases.
 
+Provider secrets can live in the process environment or in explicit top-level
+fields in the local `~/.gbrain/config.json`:
+
+```json
+{
+  "dashscope_api_key": "sk-...",
+  "minimax_api_key": "sk-..."
+}
+```
+
+These are file-plane settings; edit the JSON file directly rather than using
+`gbrain config set`, which writes the database plane. Process environment
+variables win over file values.
+
 ## TL;DR table
 
 | Provider | env vars | default dims | cost ($/1M tokens) | local? | multimodal? |
@@ -29,7 +43,6 @@ The resolved provider + dimensions get persisted to `~/.gbrain/config.json` atom
 | `voyage` | `VOYAGE_API_KEY` | 1024 | 0.18 | no | yes (`voyage-multimodal-3`) |
 | `google` | `GOOGLE_GENERATIVE_AI_API_KEY` | 768 | 0.025 | no | no |
 | `azure-openai` | `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT` | 1536 | 0.13 | no | no |
-| `minimax` | `MINIMAX_API_KEY` | 1536 | 0.07 | no | no |
 | `dashscope` | `DASHSCOPE_API_KEY` | 1024 | varies | no | no |
 | `zhipu` | `ZHIPUAI_API_KEY` | 1024 | varies | no | no |
 | `ollama` | (none — runs locally) | 768 | 0 | yes | no |
@@ -39,6 +52,7 @@ The resolved provider + dimensions get persisted to `~/.gbrain/config.json` atom
 | `anthropic` | (no embedding model — chat only) | — | — | — | — |
 | `deepseek` | (no embedding model — chat only) | — | — | — | — |
 | `groq` | (no embedding model — chat only) | — | — | — | — |
+| `minimax` | `MINIMAX_API_KEY` | 1536 | 0.07 | no | no |
 
 **Note on local providers.** Ollama and llama-server have no required API key, so they don't show up in env-detection auto-pick. Pick them explicitly with `--embedding-model ollama:<model>` to avoid silently routing to a daemon that may not be running.
 
@@ -67,7 +81,7 @@ The doctor distinguishes two repair paths:
 - **Local reranking (no API spend)**: `llama-server-reranker` recipe (v0.40.6.1) — point gbrain at your own `llama-server --reranking` instance running Qwen3-Reranker or self-hosted ZeroEntropy weights. Same `gateway.rerank()` seam, $0 per call. Walkthrough in [`docs/ai-providers/llama-server-reranker.md`](../ai-providers/llama-server-reranker.md).
 - **One key for many hosted models**: OpenRouter. Set `OPENROUTER_API_KEY` and use `openrouter:<provider>/<model>` for chat against GPT-5.2, Claude 4.x, Gemini 3, DeepSeek, and dozens more without juggling per-provider keys. Embedding catalog includes OpenAI, Google, Qwen, BGE-M3.
 - **Enterprise compliance**: Azure OpenAI (data residency + private endpoints) or self-hosted via llama-server / Ollama.
-- **China region**: DashScope (Alibaba) or Zhipu (BigModel). DashScope's international endpoint at `dashscope-intl.aliyuncs.com`; override `provider_base_urls.dashscope` for the China endpoint.
+- **China region**: DashScope (Alibaba) or Zhipu (BigModel). DashScope embedding and hosted reranking share `DASHSCOPE_API_KEY` but use separate recipes and base URLs: `dashscope` for `/compatible-mode/v1`, `dashscope-rerank` for `/compatible-api/v1`.
 - **OSS local, full control**: llama-server (`llama.cpp`) for any GGUF model; Ollama for the curated catalog.
 - **Anything else**: LiteLLM proxy. Run LiteLLM in front of any provider (Bedrock, Vertex, Cohere, Jina, Fireworks, etc.) and point gbrain at it via `LITELLM_BASE_URL`.
 
@@ -125,15 +139,83 @@ Models: `text-embedding-3-large`, `text-embedding-3-small`, `text-embedding-ada-
 
 ### MiniMax (海螺AI)
 
-Set `MINIMAX_API_KEY`. Optional `MINIMAX_GROUP_ID` for org-scoped accounts. Model: `embo-01` (1536 dims).
+Set `MINIMAX_API_KEY`, or put `"minimax_api_key": "..."` in the local config file; `MINIMAX_GROUP_ID` is optional. GBrain retains the upstream `embo-01` embedding integration (1536 dims) and its MiniMax-specific request/response shim. The same recipe also exposes the upstream chat catalog and adds `minimax:MiniMax-M3` for query expansion through the OpenAI-compatible `/chat/completions` path.
 
-MiniMax's API takes a `type: 'db' | 'query'` field for asymmetric retrieval. v0.32 routes everything as `type='db'` (symmetric retrieval — same vector space for indexing and queries). Asymmetric query support is a v0.32.x follow-up.
+To retain MiniMax reasoning without leaking `<think>` tags into the final text, merge this model-scoped block into `~/.gbrain/config.json`:
+
+```json
+{
+  "minimax_api_key": "sk-...",
+  "expansion_model": "minimax:MiniMax-M3",
+  "provider_chat_options": {
+    "minimax:MiniMax-M3": {
+      "thinking": { "type": "adaptive" },
+      "reasoning_split": true
+    }
+  }
+}
+```
+
+With `reasoning_split: true`, MiniMax returns reasoning separately in `reasoning_content` / `reasoning_details`; the expansion parser consumes only final content. The same model-scoped options also apply when MiniMax-M3 is selected explicitly for chat.
+
+```bash
+export MINIMAX_API_KEY=...
+gbrain config set models.expansion minimax:MiniMax-M3
+gbrain providers test --touchpoint chat --model minimax:MiniMax-M3
+```
+
+Expansion runs when the resolved search mode enables it (`tokenmax` does by default), or after `gbrain config set search.expansion true`; invoke it through `gbrain query "your search"`. There is no standalone expansion command.
 
 ### DashScope (Alibaba)
 
-Set `DASHSCOPE_API_KEY`. International endpoint at `dashscope-intl.aliyuncs.com` by default; override `provider_base_urls.dashscope` for the China endpoint. Models: `text-embedding-v3` (current; Matryoshka 64-1024 dims), `text-embedding-v2`.
+Set `DASHSCOPE_API_KEY`, or store it as `dashscope_api_key` in the local config
+file. Both embedding and reranking reuse this one key. The international
+endpoint at `dashscope-intl.aliyuncs.com` remains the default. GBrain supports
+only `text-embedding-v4` (Matryoshka 64-2048 dims).
+
+Hosted `qwen3-rerank` uses the upstream `dashscope-rerank` recipe. It shares `DASHSCOPE_API_KEY` with embeddings, but its base URL is configured separately because Alibaba exposes reranking under `/compatible-api/v1` rather than the embedding recipe's `/compatible-mode/v1`.
+
+Alibaba references: [Embedding](https://help.aliyun.com/zh/model-studio/embedding) and [Rerank](https://help.aliyun.com/zh/model-studio/rerank).
+
+For a Beijing workspace, merge the runtime-effective values into the existing `~/.gbrain/config.json` (do not replace its other fields):
+
+```json
+{
+  "dashscope_api_key": "sk-...",
+  "provider_base_urls": {
+    "dashscope": "https://<WorkspaceId>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    "dashscope-rerank": "https://<WorkspaceId>.cn-beijing.maas.aliyuncs.com/compatible-api/v1"
+  }
+}
+```
+
+The non-secret base URLs can also be set without editing JSON directly:
+
+```bash
+gbrain config set provider_base_urls.dashscope \
+  'https://<WorkspaceId>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1'
+gbrain config set provider_base_urls.dashscope-rerank \
+  'https://<WorkspaceId>.cn-beijing.maas.aliyuncs.com/compatible-api/v1'
+```
+
+The reranker recipe appends `/reranks`, producing
+`https://<WorkspaceId>.cn-beijing.maas.aliyuncs.com/compatible-api/v1/reranks`.
+
+Choose the embedding model and schema width when initializing a fresh PGLite brain, then enable reranking through the DB-plane config:
+
+```bash
+gbrain init --pglite --embedding-model dashscope:text-embedding-v4 --embedding-dimensions 1024
+gbrain config set search.reranker.model dashscope-rerank:qwen3-rerank
+gbrain config set search.reranker.enabled true
+```
+
+For an existing brain, use `gbrain reinit-pglite --embedding-model dashscope:text-embedding-v4 --embedding-dimensions 1024` or follow `docs/embedding-migrations.md` for Postgres. `gbrain config set embedding_model` and `embedding_dimensions` are intentionally refused because DB-plane writes cannot resize the embedding column.
+
+The separate recipe also carries its own 30-second hosted timeout and plural `/reranks` leaf, matching the upstream implementation.
 
 CJK-dominant content tokenizes denser than OpenAI tiktoken; gbrain declares `chars_per_token: 2` so the batch pre-split leaves headroom.
+
+DashScope `text-embedding-v4` is capped at 10 inputs per request. Alibaba's table is region-specific: Beijing lists 33,000 aggregate tokens per batch, Singapore lists 8,192, and each v4 input text is capped at 8,192 tokens. GBrain uses the conservative 8,192-token batch cap; the upstream gateway enforces the item cap independently through `capBatchItems`.
 
 ### Zhipu AI (BigModel)
 

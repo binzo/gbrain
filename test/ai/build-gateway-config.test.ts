@@ -359,3 +359,23 @@ describe('buildGatewayConfig import side effect guard', () => {
     expect(result.stdout).not.toMatch(/usage|commands available|gbrain v?\\d/);
   });
 });
+
+describe('buildGatewayConfig MiniMax config-plane key', () => {
+  test('minimax_api_key folds into MINIMAX_API_KEY', async () => {
+    await withEnv({ MINIMAX_API_KEY: undefined }, async () => {
+      const cfg = buildGatewayConfig({
+        minimax_api_key: 'sk-minimax-config',
+      } as unknown as GBrainConfig);
+      expect(cfg.env.MINIMAX_API_KEY).toBe('sk-minimax-config');
+    });
+  });
+
+  test('process env wins over minimax_api_key config', async () => {
+    await withEnv({ MINIMAX_API_KEY: 'sk-minimax-env' }, async () => {
+      const cfg = buildGatewayConfig({
+        minimax_api_key: 'sk-minimax-config',
+      } as unknown as GBrainConfig);
+      expect(cfg.env.MINIMAX_API_KEY).toBe('sk-minimax-env');
+    });
+  });
+});

@@ -21,9 +21,9 @@ import type { Recipe } from '../types.ts';
  * mode" (native-API only, so it is deliberately NOT listed here).
  *
  * Note: the international endpoint requires a region-aware DASHSCOPE_API_KEY.
- * China-region users point at https://dashscope.aliyuncs.com/compatible-api/v1
- * via `provider_base_urls['dashscope-rerank']`, mirroring the embedding
- * recipe's convention.
+ * China-region users point at the same WorkspaceId host as embeddings, but
+ * select `/compatible-api/v1` through
+ * `provider_base_urls['dashscope-rerank']`.
  */
 export const dashscopeRerank: Recipe = {
   id: 'dashscope-rerank',
@@ -55,7 +55,8 @@ export const dashscopeRerank: Recipe = {
   },
   setup_hint:
     'Get an API key at https://help.aliyun.com/zh/model-studio/getting-started/, then ' +
-    '`export DASHSCOPE_API_KEY=...` and `gbrain config set search.reranker.model ' +
+    'set `dashscope_api_key` in ~/.gbrain/config.json (shared with embeddings) and ' +
+    '`gbrain config set search.reranker.model ' +
     'dashscope-rerank:qwen3-rerank`. China-region accounts: `gbrain config set ' +
-    'provider_base_urls.dashscope-rerank https://dashscope.aliyuncs.com/compatible-api/v1`.',
+    'provider_base_urls.dashscope-rerank "https://<WorkspaceId>.cn-beijing.maas.aliyuncs.com/compatible-api/v1"`.',
 };

@@ -130,6 +130,11 @@ export const minimax: Recipe = {
       // halving in the gateway catches token-limit errors at runtime.
       max_batch_tokens: 4096,
     },
+    expansion: {
+      models: ['MiniMax-M3'],
+      cost_per_1m_tokens_usd: 0.3,
+      price_last_verified: '2026-06-19',
+    },
     chat: {
       // Model list from MiniMax's /v1/models (#1977). Chat is genuinely
       // OpenAI-compatible — no wire rewrite needed (minimaxCompatFetch
@@ -149,6 +154,6 @@ export const minimax: Recipe = {
     },
   },
   setup_hint:
-    'Get an API key at https://www.minimaxi.com, then `export MINIMAX_API_KEY=...`',
+    'Get an API key at https://www.minimaxi.com, then `export MINIMAX_API_KEY=...` or set `minimax_api_key` in ~/.gbrain/config.json',
   compat: { fetch: minimaxCompatFetch },
 };

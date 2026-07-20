@@ -9,7 +9,7 @@
  * import it from `../../src/cli.ts`.
  *
  * The single ownership site for: (a) folding file-plane API keys
- * (openai/anthropic/zeroentropy/openrouter/voyage/dashscope/google) into the gateway env, and (b) threading
+ * (openai/anthropic/zeroentropy/openrouter/voyage/dashscope/google/minimax) into the gateway env, and (b) threading
  * local-server `*_BASE_URL` env vars into base_urls. Both matter for the
  * init-time embedding-key probe — without (a) it would false-warn on
  * config.json-keyed users, and without (b) a live probe could hit the wrong
@@ -56,6 +56,9 @@ export function buildGatewayConfig(c: GBrainConfig): AIGatewayConfig {
   // deferral noted in src/core/brain-score-recommendations.ts, whose
   // HOSTED_EMBED_KEY_CONFIG entry lands in the same change.)
   if (c.google_api_key) envFromConfig.GOOGLE_GENERATIVE_AI_API_KEY = c.google_api_key;
+  // MiniMax follows the same explicit file-plane convention as
+  // DashScope/Google instead of introducing a generic provider secret map.
+  if (c.minimax_api_key) envFromConfig.MINIMAX_API_KEY = c.minimax_api_key;
   // Azure OpenAI (keyless/Entra): fold the non-secret endpoint/deployment + the
   // Entra opt-in into the gateway env so the azure-openai recipe works in any
   // shell (incl. non-interactive agent shells). The bearer token is minted at

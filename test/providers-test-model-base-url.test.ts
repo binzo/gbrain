@@ -9,7 +9,7 @@
  * endpoint would pass `gbrain providers test --touchpoint embedding` (no
  * `--model`, uses configureFromEnv() which DOES forward base_urls) but fail
  * `gbrain providers test --touchpoint embedding --model
- * dashscope:text-embedding-v3` with a misleading "Incorrect API key" error
+ * dashscope:text-embedding-v4` with a misleading "Incorrect API key" error
  * — the probe silently fell back to the recipe's hardcoded default endpoint
  * (dashscope-intl.aliyuncs.com) instead of the configured one.
  *
@@ -56,7 +56,7 @@ beforeEach(() => {
   writeFileSync(
     join(tmpHome, '.gbrain', 'config.json'),
     JSON.stringify({
-      embedding_model: 'dashscope:text-embedding-v3',
+      embedding_model: 'dashscope:text-embedding-v4',
       embedding_dimensions: 1024,
       provider_base_urls: { dashscope: CUSTOM_BASE_URL },
     }),
@@ -80,7 +80,7 @@ describe('providers test --model — provider_base_urls (#2863)', () => {
     await withEnv(
       { GBRAIN_HOME: tmpHome, DASHSCOPE_API_KEY: 'test-dashscope-key' },
       async () => {
-        await runProviders('test', ['--touchpoint', 'embedding', '--model', 'dashscope:text-embedding-v3']);
+        await runProviders('test', ['--touchpoint', 'embedding', '--model', 'dashscope:text-embedding-v4']);
       },
     );
 

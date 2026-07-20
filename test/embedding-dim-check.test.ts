@@ -257,6 +257,15 @@ describe('resolveSchemaEmbeddingDim', () => {
     if (got.ok) expect(got.dim).toBe(768);
   });
 
+  test('DashScope v4 accepts its 2048-dimension Matryoshka option', () => {
+    const got = resolveSchemaEmbeddingDim({
+      embedding_model: 'dashscope:text-embedding-v4',
+      embedding_dimensions: 2048,
+    });
+    expect(got.ok).toBe(true);
+    if (got.ok) expect(got.dim).toBe(2048);
+  });
+
   // #2271 — trust_custom_dims passthrough for local / BYO-backend recipes.
   test('ollama accepts a custom dim for a modern model via trust_custom_dims', () => {
     const got = resolveSchemaEmbeddingDim({
